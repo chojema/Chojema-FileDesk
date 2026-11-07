@@ -21,7 +21,10 @@ function mount(content: HTMLElement, onKey: (e: KeyboardEvent) => void): () => v
   overlay.addEventListener('keydown', keyHandler)
   root().append(overlay)
   openCount++
+  let mounted = true
   return () => {
+    if (!mounted) return
+    mounted = false
     overlay.remove()
     openCount--
     prevFocus?.focus()
@@ -29,7 +32,7 @@ function mount(content: HTMLElement, onKey: (e: KeyboardEvent) => void): () => v
 }
 
 function trapTab(e: KeyboardEvent, box: HTMLElement): void {
-  const items = [...box.querySelectorAll<HTMLElement>('button, input, select')].filter((x) => !x.hasAttribute('disabled'))
+  const items = [...box.querySelectorAll<HTMLElement>('button, input, select')].filter((x) => !x.hasAttribute('disabled') && x.getClientRects().length > 0)
   if (!items.length) return
   const idx = items.indexOf(document.activeElement as HTMLElement)
   const next = e.shiftKey ? (idx <= 0 ? items.length - 1 : idx - 1) : idx === items.length - 1 ? 0 : idx + 1

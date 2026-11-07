@@ -28,7 +28,7 @@ export interface Place {
   id: string
   label: string
   path: string
-  kind: 'drive' | 'volume' | 'home' | 'folder'
+  kind: 'drive' | 'volume' | 'home' | 'folder' | 'server'
 }
 
 export interface DiskSpace {
@@ -48,6 +48,7 @@ export interface Settings {
   showHidden: boolean
   showDotFiles: boolean
   confirmDelete: boolean
+  checkUpdatesOnStart: boolean
   /** Most recently visited folders, newest first (local only). */
   recentDirs: string[]
   favorites: string[]
@@ -71,7 +72,39 @@ export interface Progress {
   current: string
   index: number
   total: number
+  bytes?: number
 }
+
+export type ServerProtocol = 'ftp' | 'ftps' | 'ftps-implicit' | 'sftp'
+export interface ServerProfile {
+  id: string
+  name: string
+  protocol: ServerProtocol
+  host: string
+  port: number
+  username: string
+  remoteDir: string
+  privateKeyPath: string
+  rememberPassword: boolean
+  hasPassword?: boolean
+}
+export interface ConnectRequest {
+  profile: ServerProfile
+  password: string
+  passphrase: string
+  saveProfile: boolean
+}
+export interface ServerConnection { id: string; name: string; root: string }
+export interface UpdateInfo {
+  available: boolean
+  current: string
+  latest: string
+  notes: string
+  url: string
+  assetName?: string
+  size?: number
+}
+export interface UpdateProgress { received: number; total: number }
 
 export interface Result<T> {
   ok: boolean
@@ -101,4 +134,14 @@ export interface FileDeskApi {
   onProgress(cb: (p: Progress) => void): () => void
   onMenu(cb: (cmd: string) => void): () => void
   setMenuLang(lang: Lang): Promise<void>
+  openLink(url: string): Promise<void>
+  checkUpdate(): Promise<Result<UpdateInfo>>
+  downloadUpdate(): Promise<Result<string>>
+  onUpdateProgress(cb: (p: UpdateProgress) => void): () => void
+  serverProfiles(): Promise<ServerProfile[]>
+  removeServerProfile(id: string): Promise<void>
+  connectServer(req: ConnectRequest): Promise<Result<ServerConnection>>
+  disconnectServer(root: string): Promise<void>
+  serverConnections(): Promise<ServerConnection[]>
+  pickPrivateKey(): Promise<string | null>
 }

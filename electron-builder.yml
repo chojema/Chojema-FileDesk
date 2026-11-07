@@ -8,7 +8,11 @@ files:
   - out/**/*
   - package.json
   - "!**/*.map"
+  - "!node_modules/cpu-features/**/*"
+  - "!node_modules/ssh2/lib/protocol/crypto/build/**/*"
 asar: true
+# SSH uses its JavaScript implementation on every target CPU.
+npmRebuild: false
 publish: null
 
 mac:

@@ -27,6 +27,8 @@ Chojema FileDesk is a two-pane file manager. Browse folders with the keyboard an
 - Back/forward history and direct path entry
 - Visited folders (last 30) and favorite folders from the path bar
 - Show/hide hidden items, with separate options for hidden-attribute items and items starting with a dot (eye icon in the path bar, `Ctrl/⌘` + `.`, View menu, Settings)
+- FTP, FTPS and SFTP connections, saved servers and file/folder uploads/downloads
+- GitHub release checks and verified update downloads
 - Korean and English interface
 - Light, dark or system theme
 
@@ -76,6 +78,7 @@ The eye icon at the right of the path bar, or `Ctrl/⌘` + `.`, turns both on or
 | Key | Action |
 | --- | --- |
 | `Tab` | Switch pane |
+| `Ctrl/⌘` + `K` | Connect to server |
 | `Enter` | Open folder / open file with its default app |
 | `Backspace` | Parent folder |
 | `Space` | Toggle selection |
@@ -107,6 +110,7 @@ Download the file for your system from the [Releases](../../releases) page.
 
 | System | File |
 | --- | --- |
+| Windows (automatic x64/ARM64 selection) | `Chojema-FileDesk-<version>-win-setup.exe` |
 | Windows (installer) | `Chojema-FileDesk-<version>-win-x64-setup.exe` (`arm64` for ARM PCs) |
 | Windows (portable) | `Chojema-FileDesk-<version>-win-x64-portable.exe` |
 | macOS (Apple Silicon) | `Chojema-FileDesk-<version>-mac-arm64.dmg` |
@@ -119,65 +123,49 @@ The app is not signed with a commercial code-signing certificate, so you may see
 - **Windows**: when "Windows protected your PC" appears, click **More info** → **Run anyway**.
 - **macOS**: if the app is blocked, open **System Settings** → **Privacy & Security** and click **Open Anyway**.
 
+## Updates
+
+Choose **Information → Check for Updates**, or use the button above the panes. If a newer release is available, review its notes and choose **Download and Open Installer**. FileDesk selects the matching OS/CPU artifact and verifies its SHA-256 checksum before opening it.
+
+- Windows: quit FileDesk and complete the installer. For a portable installation, replace the old executable with the new one.
+- macOS: quit FileDesk, then copy the app from the opened DMG into Applications to replace the old app.
+- Enable **Settings → Check for updates on startup** to receive update notices at launch. Installation remains your choice.
+
+## File server connections and transfers
+
+1. Choose **Server → Connect to Server** (`Ctrl/⌘+K`), or use **Connect to Server** above the panes.
+2. Enter the protocol, hostname, port, username and password. You can also paste a URL such as `sftp://user@server:22/folder`.
+3. Select a pane and connect. The right pane is selected by default. Open your local folder in the other pane.
+4. Select files/folders and press **F5 Copy** to upload or download. **F6 Move** removes a source only after its complete transfer succeeds. Choose overwrite or skip when names conflict.
+
+| Protocol | Default port | Authentication |
+| --- | --- | --- |
+| FTP | 21 | Plain, unencrypted FTP. Leave the username blank for anonymous access. |
+| FTPS · TLS | 21 | Explicit TLS (FTPES), when supported by the server. |
+| FTPS · Implicit TLS | 990 | Servers requiring implicit TLS. |
+| SFTP · SSH | 22 | SSH password or an OpenSSH/PEM private key with an optional passphrase. |
+
+FTP/FTPS use passive mode, binary transfers and UTF-8 filenames. A NAS/firewall must allow the control port and the server's configured passive data-port range. FTPS also encrypts its data connections.
+
+- Leave the initial remote folder blank to use the server's login directory.
+- **Save connection profile** keeps frequently used servers. **Remember password** is optional and stores credentials using OS encryption on this computer. Private keys are read from the file you choose.
+- FileDesk asks you to verify first-use SSH keys and FTPS certificates that cannot be validated through public trust. Compare the fingerprint with your server administrator's value. Changed saved fingerprints require confirmation again.
+- Connected servers appear in each pane's places bar. **Disconnect Server** returns panes using that connection to local folders. Reconnect using a saved profile after restarting the app.
+- Create folders, rename items and calculate folder sizes on the server. **Remote deletion is permanent and always requires confirmation; remote items do not go to Trash.**
+- Opening a remote file downloads a temporary local copy. Upload it again to send your edits to the server. Transfers involving a server do not follow symbolic links.
+- Interrupted transfers keep the source. Check the connection and retry. Resuming from a partial download is not supported.
+
+## Information and websites
+
+The **Information** menu and **About Chojema FileDesk** window include this repository, [Chojema App Park](https://chojema.github.io/AppPark/), [Blog](https://cantips.com), [YouTube](https://www.youtube.com/@cantips), [X](https://twitter.com/chojema), [Instagram](https://www.instagram.com/chojema), [GitHub](https://github.com/chojema), and [Homepage](http://ilovemis.com/).
+
 ## Privacy
 
-- Chojema FileDesk collects no data and sends nothing anywhere. It makes no network connections.
-- Settings (language, theme, last opened folders, visited folders, favorites, etc.) are stored only on your computer. Clear the visited-folder history with **Clear History** in that list. Location:
-  - Windows: `%APPDATA%\Chojema FileDesk\settings.json`
-  - macOS: `~/Library/Application Support/Chojema FileDesk/settings.json`
-- Deleting moves items to the system Trash, so they can be restored.
-
-## Building from source
-
-Requirements: [Node.js](https://nodejs.org/) 22 or later
-
-```bash
-npm install
-npm run dev        # run in development mode
-npm run build      # build the app code
-npm run typecheck  # type check
-```
-
-### Packaging (Windows and macOS, both from a Mac)
-
-```bash
-npm run dist:mac   # .dmg and .zip in dist/
-npm run dist:win   # .exe installer and portable build in dist/
-npm run dist:all   # both
-```
-
-- macOS builds use an ad-hoc signature. If you have an Apple Developer ID certificate, set it with the `CSC_NAME` environment variable.
-- If the Windows build fails on macOS while editing the executable's icon/version resources, install Wine and retry (`brew install --cask wine-stable`).
-
-### Icon
-
-The icon source is `build/icon-art.svg`. Regenerate the PNGs after editing:
-
-```bash
-npm run icons
-```
-
-## Versioning and releases
-
-Versions follow [Semantic Versioning](https://semver.org/) `MAJOR.MINOR.PATCH`, with `version` in `package.json` as the single source.
-
-```bash
-# 1. Bump the version and create Korean/English release-note drafts
-npm run release:prepare -- patch     # or minor, major, 1.2.3
-
-# 2. Write release-notes/v<version>.md and v<version>.en.md
-
-# 3. Build the packages
-npm run dist:all
-
-# 4. Create the GitHub release body (Korean + English)
-npm run release:notes
-```
-
-Use the `git tag` / `gh release create` commands printed by the last step to publish on GitHub.
-
-- Changelog: [CHANGELOG.en.md](CHANGELOG.en.md)
-- Release notes: [release-notes/](release-notes/)
+- FileDesk does not collect usage statistics or personal files. Update checks contact GitHub; server operations contact the server you specify. Information links open in your default browser.
+- Settings, visited folders and favorites are stored in `settings.json`; server profiles, trusted fingerprints and encrypted credentials are stored in `servers.json`, only on this computer. Clear history and remove saved servers from within the app.
+  - Windows: `%APPDATA%\Chojema FileDesk\`
+  - macOS: `~/Library/Application Support/Chojema FileDesk/`
+- Local deletion moves items to the OS Trash. Remote deletion is permanent.
 
 ## License
 

@@ -4,11 +4,17 @@ import type { ConflictPolicy, FileEntry, Lang, PaneSide, Settings, ThemePref, Tr
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
+import { formatSize } from './util'
+import { APP_LINKS } from '@shared/links'
+import { isRemotePath, remotePath } from '@shared/remote-path'
+import { connectDialog } from './server-ui'
+import { showUpdate } from './update-ui'
 
 let settings: Settings
 let active: Pane
 let operating = false
 const panes = {} as Record<PaneSide, Pane>
+const lastLocal = { left: '', right: '' }
 
 const other = (p: Pane): Pane => (p === panes.left ? panes.right : panes.left)
 
@@ -30,7 +36,8 @@ function persist(): void {
   saveTimer = window.setTimeout(() => {
     for (const side of ['left', 'right'] as PaneSide[]) {
       const p = panes[side]
-      settings.panes[side] = { path: p.path, sortKey: p.sortKey, sortAsc: p.sortAsc }
+      if (!isRemotePath(p.path)) lastLocal[side] = p.path
+      settings.panes[side] = { path: lastLocal[side] || p.path, sortKey: p.sortKey, sortAsc: p.sortAsc }
     }
     void api.saveSettings(settings)
   }, 400)
@@ -52,7 +59,7 @@ const host: PaneHost = {
   toggleHiddenAll: () => void run('toggleHiddenAll'),
   onOpenFile: (entry) => void openFile(entry),
   onError: (msg) => void alertBox(t('dlg.error.title'), msg),
-  onStateChange: persist,
+  onStateChange: () => { persist(); updateToolbarDirection() },
   onVisited: addRecent,
   isFavorite: (p) => settings.favorites.some((f) => pathKey(f) === pathKey(p)),
   // The pane activates itself before calling these, so the commands act on it.
@@ -66,6 +73,7 @@ const MAX_RECENT = 30
 
 /** Comparison key: case-insensitive on Windows/macOS, no trailing separator (except roots). */
 function pathKey(p: string): string {
+  if (isRemotePath(p)) return p.replace(/\/$/, '')
   let k = p.length > 3 ? p.replace(/[\\/]+$/, '') : p
   if (api.platform !== 'linux') k = k.toLowerCase()
   return k
@@ -166,7 +174,7 @@ async function reportErrors(r: TransferResult): Promise<void> {
 async function runWithProgress<T>(titleKey: MsgKey, fn: () => Promise<T>): Promise<T> {
   operating = true
   const b = busy(t(titleKey))
-  const off = api.onProgress((p) => b.update(p.current, p.total ? p.index / p.total : 0))
+  const off = api.onProgress((p) => b.update(p.bytes === undefined ? p.current : `${p.current} · ${formatSize(p.bytes)}`, p.total ? p.index / p.total : 0))
   try {
     return await fn()
   } finally {
@@ -192,7 +200,7 @@ async function transfer(op: 'copy' | 'move'): Promise<void> {
     value: dst.path
   })
   if (destInput === null) return
-  const resolved = await api.resolvePath(destInput, src.path)
+  const resolved = await api.resolvePath(destInput, dst.path)
   if (!resolved.ok || !resolved.value) {
     await alertBox(t('dlg.error.title'), `${t('err.notFound')}\n${destInput}`)
     return
@@ -253,10 +261,11 @@ async function renameCurrent(): Promise<void> {
 async function trashTargets(): Promise<void> {
   const items = active.targets()
   if (!items.length) return
-  if (settings.confirmDelete) {
+  const remoteDelete = items.some(i => isRemotePath(i.path))
+  if (settings.confirmDelete || remoteDelete) {
     const ok = await choose<'ok' | 'cancel'>({
-      title: t('dlg.delete.title'),
-      message: t('dlg.delete.msg', { n: items.length }),
+      title: t(remoteDelete ? 'server.remoteDeleteTitle' : 'dlg.delete.title'),
+      message: t(remoteDelete ? 'server.remoteDelete' : 'dlg.delete.msg', { n: items.length }),
       detail: items.slice(0, 30).map((i) => i.name).join('\n') + (items.length > 30 ? '\n…' : ''),
       buttons: [
         { id: 'cancel', label: t('btn.cancel') },
@@ -312,6 +321,7 @@ async function openSettings(): Promise<void> {
   const hidden = el('input', { type: 'checkbox', checked: settings.showHidden, id: 'set-hidden' })
   const dot = el('input', { type: 'checkbox', checked: settings.showDotFiles, id: 'set-dot' })
   const confirmDel = el('input', { type: 'checkbox', checked: settings.confirmDelete, id: 'set-confirm' })
+  const autoUpdate = el('input', { type: 'checkbox', checked: settings.checkUpdatesOnStart, id: 'set-updates' })
   const form = el(
     'div',
     {},
@@ -321,7 +331,8 @@ async function openSettings(): Promise<void> {
     el('label', { class: 'check' }, hidden, t('set.hidden')),
     el('label', { class: 'check' }, dot, t('set.dot')),
     el('div', { class: 'group-sep' }),
-    el('label', { class: 'check' }, confirmDel, t('set.confirmDelete'))
+    el('label', { class: 'check' }, confirmDel, t('set.confirmDelete')),
+    el('label', { class: 'check' }, autoUpdate, t('update.onStart'))
   )
   const res = await choose<'ok' | 'cancel'>({
     title: t('dlg.settings.title'),
@@ -339,12 +350,14 @@ async function openSettings(): Promise<void> {
   settings.showHidden = hidden.checked
   settings.showDotFiles = dot.checked
   settings.confirmDelete = confirmDel.checked
+  settings.checkUpdatesOnStart = autoUpdate.checked
   applyTheme()
   if (langChanged) {
     setLang(settings.lang)
     await api.setMenuLang(settings.lang)
     renderFkeys()
     renderToolbar()
+    renderConnectionBar()
     await loadPlaces()
   }
   panes.left.rerender()
@@ -354,7 +367,47 @@ async function openSettings(): Promise<void> {
 
 async function showAbout(): Promise<void> {
   const version = await api.getVersion()
-  await alertBox(t('dlg.about.title'), t('dlg.about.body', { version }))
+  const links = el('div', { class: 'about-links' }, el('p', { textContent: t('about.links') }))
+  for (const link of APP_LINKS) {
+    const button = el('button', { class: 'about-link', type: 'button', textContent: link.label, title: link.url })
+    button.addEventListener('click', () => { void api.openLink(link.url) })
+    links.append(button)
+  }
+  await choose({ title: t('dlg.about.title'), message: t('dlg.about.body', { version }), extra: links,
+    buttons: [{ id: 'close', label: t('btn.close'), kind: 'primary' }], cancelId: 'close' })
+}
+
+async function connectServer(): Promise<void> {
+  const result = await connectDialog()
+  if (!result) return
+  const pane = panes[result.side]
+  if (!isRemotePath(pane.path)) lastLocal[result.side] = pane.path
+  await loadPlaces()
+  await pane.load(result.connection.root)
+  host.activate(pane)
+  pane.focus()
+}
+
+async function disconnectServer(): Promise<void> {
+  if (!isRemotePath(active.path)) { await alertBox(t('server.disconnect'), t('server.none')); return }
+  const key = remotePath(active.path).key
+  await api.disconnectServer(active.path)
+  const fallback = (await api.places())[0]?.path || '/'
+  for (const side of ['left', 'right'] as const) {
+    if (isRemotePath(panes[side].path) && remotePath(panes[side].path).key === key) await panes[side].load(lastLocal[side] || fallback)
+  }
+  await loadPlaces()
+}
+
+function renderConnectionBar(): void {
+  const bar = document.getElementById('connection-bar')!
+  const button = (id: string, label: MsgKey, command: string): HTMLButtonElement => {
+    const b = el('button', { id, class: 'btn', textContent: t(label), type: 'button' })
+    b.addEventListener('click', () => { void run(command) })
+    return b
+  }
+  bar.replaceChildren(button('connect-server', 'server.connect', 'connect'), button('disconnect-server', 'server.disconnect', 'disconnect'),
+    el('span', { class: 'connection-hint', textContent: 'FTP · FTPS · SFTP' }), button('check-update', 'update.check', 'checkUpdate'))
 }
 
 async function showShortcuts(): Promise<void> {
@@ -390,6 +443,9 @@ const commands: Record<string, () => void | Promise<void>> = {
   },
   settings: openSettings,
   about: showAbout,
+  connect: connectServer,
+  disconnect: disconnectServer,
+  checkUpdate: () => showUpdate(),
   shortcuts: showShortcuts,
   focusPath: () => active.focusPath(),
   terminal: async () => {
@@ -435,7 +491,8 @@ function toast(message: string): void {
 
 async function run(cmd: string): Promise<void> {
   if (operating || isModalOpen()) return
-  await commands[cmd]?.()
+  try { await commands[cmd]?.() }
+  catch (e) { await alertBox(t('dlg.error.title'), e instanceof Error ? e.message : String(e)) }
   if (!isModalOpen()) active.focus()
 }
 
@@ -492,6 +549,7 @@ function onKey(e: KeyboardEvent): void {
   else if (mod && e.shiftKey && k.toLowerCase() === 'c') cmd = 'copyPath'
   else if (e.altKey && !mod && k === 'ArrowDown') cmd = 'history'
   else if (mod && !e.shiftKey && k.toLowerCase() === 'd') cmd = 'favorites'
+  else if (mod && !e.shiftKey && k.toLowerCase() === 'k') cmd = 'connect'
   else if (isMac && e.metaKey && e.shiftKey && k.toLowerCase() === 'n') cmd = 'mkdir'
   if (cmd) {
     e.preventDefault()
@@ -548,6 +606,12 @@ function renderToolbar(): void {
 /** Copy/move arrows point from the active pane toward the other pane. */
 function updateToolbarDirection(): void {
   document.getElementById('toolbar')!.classList.toggle('to-left', active === panes.right)
+  const trash = document.querySelector<HTMLButtonElement>('#toolbar .danger')
+  if (trash) {
+    const label = `${t(isRemotePath(active.path) ? 'server.remoteDeleteTitle' : 'menu.trash')} (F8)`
+    trash.title = label
+    trash.setAttribute('aria-label', label)
+  }
 }
 
 function initResize(): void {
@@ -585,6 +649,7 @@ async function boot(): Promise<void> {
   setLang(settings.lang)
   applyTheme()
   renderFkeys()
+  renderConnectionBar()
   initResize()
 
   for (const side of ['left', 'right'] as PaneSide[]) {
@@ -592,6 +657,7 @@ async function boot(): Promise<void> {
     const p = new Pane(root, side, host)
     p.sortKey = settings.panes[side].sortKey
     p.sortAsc = settings.panes[side].sortAsc
+    lastLocal[side] = isRemotePath(settings.panes[side].path) ? '' : settings.panes[side].path
     panes[side] = p
   }
   active = panes.left
@@ -608,6 +674,9 @@ async function boot(): Promise<void> {
 
   window.addEventListener('keydown', onKey)
   api.onMenu((cmd) => void run(cmd))
+  if (settings.checkUpdatesOnStart) window.setTimeout(() => {
+    if (!operating && !isModalOpen()) void showUpdate(true).catch(() => {})
+  }, 1500)
   // Pick up external changes when the window regains focus.
   window.addEventListener('focus', () => {
     if (!operating && !isModalOpen()) {

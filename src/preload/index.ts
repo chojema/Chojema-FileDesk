@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { FileDeskApi, Progress } from '@shared/types'
+import type { FileDeskApi, Progress, UpdateProgress } from '@shared/types'
 
 const api: FileDeskApi = {
   platform: process.platform,
@@ -21,6 +21,20 @@ const api: FileDeskApi = {
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   dirSize: (p) => ipcRenderer.invoke('fs:dirSize', p),
   setMenuLang: (lang) => ipcRenderer.invoke('menu:lang', lang),
+  openLink: (url) => ipcRenderer.invoke('link:open', url),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  serverProfiles: () => ipcRenderer.invoke('server:profiles'),
+  removeServerProfile: (id) => ipcRenderer.invoke('server:remove', id),
+  connectServer: (req) => ipcRenderer.invoke('server:connect', req),
+  disconnectServer: (root) => ipcRenderer.invoke('server:disconnect', root),
+  serverConnections: () => ipcRenderer.invoke('server:connections'),
+  pickPrivateKey: () => ipcRenderer.invoke('server:key'),
+  onUpdateProgress: (cb) => {
+    const handler = (_e: IpcRendererEvent, p: UpdateProgress) => cb(p)
+    ipcRenderer.on('update:progress', handler)
+    return () => ipcRenderer.removeListener('update:progress', handler)
+  },
   onProgress: (cb) => {
     const h = (_e: IpcRendererEvent, p: Progress) => cb(p)
     ipcRenderer.on('progress', h)

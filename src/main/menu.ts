@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { APP_LINKS } from '@shared/links'
 import { translate, type MsgKey } from '@shared/i18n'
 import type { Settings } from '@shared/types'
 
@@ -32,6 +33,11 @@ export function buildMenu(win: BrowserWindow, settings: Settings): void {
       ]
     })
   }
+
+  template.push({
+    label: t('menu.server'),
+    submenu: [cmd('server.connect', 'connect', 'CmdOrCtrl+K'), cmd('server.disconnect', 'disconnect')]
+  })
 
   template.push({
     label: t('menu.file'),
@@ -91,8 +97,12 @@ export function buildMenu(win: BrowserWindow, settings: Settings): void {
   })
 
   template.push({
-    label: t('menu.help'),
-    submenu: [cmd('menu.shortcuts', 'shortcuts'), ...(isMac ? [] : [cmd('menu.about', 'about')])]
+    label: t('menu.info'),
+    submenu: [
+      cmd('menu.about', 'about'), cmd('update.check', 'checkUpdate'), cmd('menu.shortcuts', 'shortcuts'),
+      { type: 'separator' },
+      ...APP_LINKS.map(link => ({ label: link.label, click: () => { void shell.openExternal(link.url) } }))
+    ]
   })
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))

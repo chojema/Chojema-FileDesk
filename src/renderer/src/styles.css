@@ -704,3 +704,22 @@ select {
   background: var(--surface-2);
   color: var(--danger);
 }
+
+.connection-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+.connection-bar .btn { font-size: 12px; height: 28px; }
+.connection-hint { flex: 1; color: var(--text-dim); font-size: 11px; }
+#check-update { margin-left: auto; }
+.modal:has(.server-form) { width: min(640px, calc(100vw - 32px)); }
+.modal input[type='password'], .modal input[type='number'] { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text); outline: none; }
+.modal input[type='password']:focus, .modal input[type='number']:focus { border-color: var(--accent); }
+.field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.input-action { display: flex; gap: 6px; }
+.input-action input { min-width: 0; flex: 1; }
+.input-action .btn { min-width: 36px; padding: 0 8px; }
+.modal .hint { font-size: 11px; margin: 4px 0 0; white-space: normal; overflow-wrap: anywhere; }
+.about-links { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.about-links p { grid-column: 1 / -1; margin-bottom: 2px; }
+.about-link { text-align: left; border: 1px solid var(--border); background: var(--surface-2); color: var(--accent); border-radius: 6px; padding: 8px; cursor: pointer; font-size: 12px; }
+.about-link:hover { border-color: var(--accent); }
+[hidden] { display: none !important; }
+@media (max-width: 850px) { .connection-hint { display: none; } .connection-bar .btn { min-width: 0; } }

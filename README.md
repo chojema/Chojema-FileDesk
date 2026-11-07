@@ -27,6 +27,8 @@ Chojema FileDesk는 두 개의 패널을 나란히 놓고 파일을 다루는 2�
 - 뒤로·앞으로 이동 기록, 경로 직접 입력
 - 경로 표시줄의 방문했던 폴더(최근 30곳) / 즐겨찾기 폴더 목록
 - 숨김 항목 표시/감추기: 숨김 속성 파일·폴더와 점(.)으로 시작하는 파일·폴더를 각각 설정 (경로 표시줄의 눈 아이콘, `Ctrl/⌘` + `.`, 보기 메뉴, 설정)
+- FTP·FTPS·SFTP 서버 연결, 접속 정보 저장, 파일·폴더 업로드/다운로드
+- GitHub 최신 릴리스 확인, 검증한 업데이트 설치 파일 열기
 - 한국어 / 영어 인터페이스
 - 밝은 테마 / 어두운 테마 / 시스템 설정 따르기
 
@@ -76,6 +78,7 @@ Chojema FileDesk는 두 개의 패널을 나란히 놓고 파일을 다루는 2�
 | 키 | 동작 |
 | --- | --- |
 | `Tab` | 패널 전환 |
+| `Ctrl/⌘` + `K` | 서버에 연결 |
 | `Enter` | 폴더 열기 / 파일을 기본 앱으로 열기 |
 | `Backspace` | 상위 폴더 |
 | `Space` | 선택 토글 |
@@ -107,6 +110,7 @@ macOS에서 펑션 키를 쓰려면 `fn` 키를 함께 누르거나, 화면 아�
 
 | 운영체제 | 파일 |
 | --- | --- |
+| Windows (x64·ARM64 자동 선택) | `Chojema-FileDesk-<버전>-win-setup.exe` |
 | Windows (설치형) | `Chojema-FileDesk-<버전>-win-x64-setup.exe` (ARM PC는 `arm64`) |
 | Windows (설치 없이 실행) | `Chojema-FileDesk-<버전>-win-x64-portable.exe` |
 | macOS (Apple Silicon) | `Chojema-FileDesk-<버전>-mac-arm64.dmg` |
@@ -119,65 +123,49 @@ macOS에서 펑션 키를 쓰려면 `fn` 키를 함께 누르거나, 화면 아�
 - **Windows**: "Windows의 PC 보호" 창이 나타나면 **추가 정보** → **실행**을 누릅니다.
 - **macOS**: 앱을 처음 열 때 차단되면 **시스템 설정** → **개인정보 보호 및 보안**에서 **그래도 열기**를 누릅니다.
 
+## 업데이트
+
+**정보 → 업데이트 확인** 또는 화면 위 **업데이트 확인**을 누릅니다. 새 버전이 있으면 변경 내용을 확인하고 **다운로드 후 설치 파일 열기**를 선택하세요. 운영체제와 CPU에 맞는 파일을 내려받고 SHA-256 체크섬을 검증한 뒤 엽니다.
+
+- Windows: FileDesk를 종료하고 설치 마법사를 완료하세요. 포터블 버전은 새 실행 파일로 교체하세요.
+- macOS: FileDesk를 종료하고 열린 DMG에서 앱을 Applications 폴더로 복사해 기존 앱을 교체하세요.
+- **설정 → 앱을 시작할 때 업데이트 확인**을 켜면 시작할 때 새 버전을 알려 줍니다. 설치는 사용자가 선택할 때 진행합니다.
+
+## 파일 서버 연결과 송수신
+
+1. **서버 → 서버에 연결** (`Ctrl/⌘+K`) 또는 화면 위 **서버에 연결**을 누릅니다.
+2. 프로토콜, 호스트, 포트, 사용자 이름과 암호를 입력합니다. `sftp://user@server:22/folder`처럼 주소를 붙여 넣어도 됩니다.
+3. 연결할 패널을 고르고 **연결**을 누릅니다. 기본은 오른쪽 패널입니다. 반대쪽 패널에는 로컬 폴더를 여세요.
+4. 파일·폴더를 선택하고 **F5 복사**로 업로드/다운로드합니다. **F6 이동**은 전체 송수신이 성공한 뒤 원본을 지웁니다. 같은 이름은 덮어쓰기/건너뛰기를 선택합니다.
+
+| 프로토콜 | 기본 포트 | 접속 방법 |
+| --- | --- | --- |
+| FTP | 21 | 일반 FTP. 통신이 암호화되지 않습니다. 익명 서버는 사용자 이름을 비울 수 있습니다. |
+| FTPS · TLS | 21 | 명시적 TLS(FTPES). 서버가 제공하면 사용하세요. |
+| FTPS · Implicit TLS | 990 | 암시적 TLS를 사용하는 서버용입니다. |
+| SFTP · SSH | 22 | SSH 암호 또는 OpenSSH/PEM 개인 키와 키 암호를 사용합니다. |
+
+FTP/FTPS는 수동(Passive) 모드, 바이너리 전송, UTF-8 파일명을 사용합니다. NAS나 방화벽 설정 시 제어 포트와 서버의 Passive 포트 범위가 열려 있어야 합니다. FTPS는 TLS 데이터 연결도 사용합니다.
+
+- 시작할 원격 폴더는 비워 두면 서버의 로그인 기본 폴더를 엽니다.
+- **접속 정보 저장**으로 자주 쓰는 서버를 보관합니다. **암호 저장**은 선택 사항이며 운영체제의 보안 기능으로 암호화해 이 컴퓨터에만 저장합니다. SSH 개인 키는 선택한 원본 파일을 읽습니다.
+- 처음 연결하는 SSH 서버나 공인 인증서로 확인되지 않는 FTPS 서버는 지문을 보여 줍니다. 서버 관리자가 알려 준 값과 확인한 뒤 신뢰하세요. 저장한 지문이 달라지면 다시 확인합니다.
+- 연결된 서버는 각 패널의 위치 표시줄에 나타납니다. **서버 연결 끊기**를 누르면 해당 서버를 쓰던 패널은 로컬 폴더로 돌아갑니다. 앱을 다시 열 때는 저장한 서버를 골라 다시 연결하세요.
+- 새 폴더·이름 변경·폴더 크기 계산을 원격 폴더에서도 사용할 수 있습니다. **원격 삭제는 휴지통으로 보내지 않고 영구 삭제**하므로 항상 확인창을 표시합니다.
+- 원격 파일을 열면 임시 폴더에 내려받아 엽니다. 수정한 파일은 다시 업로드해야 합니다. 서버를 포함하는 전송은 심볼릭 링크를 따라가지 않습니다.
+- 전송이 끊기면 원본은 유지됩니다. 연결을 다시 확인한 뒤 재시도하세요. 중간부터 이어받기는 지원하지 않습니다.
+
+## 정보와 웹사이트
+
+**정보** 메뉴와 **Chojema FileDesk 정보** 창에서 저장소, [Chojema App Park](https://chojema.github.io/AppPark/), [Blog](https://cantips.com), [YouTube](https://www.youtube.com/@cantips), [X](https://twitter.com/chojema), [Instagram](https://www.instagram.com/chojema), [GitHub](https://github.com/chojema), [Homepage](http://ilovemis.com/)를 열 수 있습니다.
+
 ## 개인정보
 
-- Chojema FileDesk는 어떤 데이터도 수집하거나 외부로 전송하지 않습니다. 네트워크 통신을 하지 않습니다.
-- 설정(언어, 테마, 마지막으로 연 폴더, 방문했던 폴더, 즐겨찾기 등)은 사용자의 컴퓨터에만 저장됩니다. 방문 기록은 방문했던 폴더 목록의 **방문 기록 지우기**로 지울 수 있습니다.
-  - Windows: `%APPDATA%\Chojema FileDesk\settings.json`
-  - macOS: `~/Library/Application Support/Chojema FileDesk/settings.json`
-- 삭제하면 운영체제의 휴지통으로 이동하므로 휴지통에서 되살릴 수 있습니다.
-
-## 소스에서 빌드하기
-
-필요한 것: [Node.js](https://nodejs.org/) 22 이상
-
-```bash
-npm install
-npm run dev        # 개발 모드로 실행
-npm run build      # 앱 코드 빌드
-npm run typecheck  # 타입 검사
-```
-
-### 배포 파일 만들기 (macOS에서 Windows·macOS 모두)
-
-```bash
-npm run dist:mac   # dist/ 에 .dmg, .zip 생성
-npm run dist:win   # dist/ 에 .exe 설치 파일과 포터블 파일 생성
-npm run dist:all   # 둘 다
-```
-
-- macOS 빌드는 임시(ad-hoc) 서명을 사용합니다. Apple Developer ID 인증서가 있으면 환경 변수 `CSC_NAME`으로 지정할 수 있습니다.
-- macOS에서 Windows를 빌드하다가 실행 파일 아이콘·버전 정보 편집 단계에서 오류가 나면 Wine을 설치한 뒤 다시 시도하세요(`brew install --cask wine-stable`).
-
-### 아이콘
-
-아이콘 원본은 `build/icon-art.svg`입니다. 수정한 뒤 다음 명령으로 PNG를 다시 만듭니다.
-
-```bash
-npm run icons
-```
-
-## 버전 관리와 릴리스
-
-버전은 [유의적 버전(SemVer)](https://semver.org/lang/ko/) `주.부.수` 형식을 따르며 `package.json`의 `version` 하나로 관리합니다.
-
-```bash
-# 1. 버전 올리기 + 릴리스 노트 초안(한국어/영어) 만들기
-npm run release:prepare -- patch     # 또는 minor, major, 1.2.3
-
-# 2. release-notes/v<버전>.md, v<버전>.en.md 작성
-
-# 3. 배포 파일 빌드
-npm run dist:all
-
-# 4. GitHub 릴리스 본문 만들기 (한국어 + 영어)
-npm run release:notes
-```
-
-마지막 명령이 출력하는 `git tag` / `gh release create` 명령으로 GitHub에 릴리스를 올립니다.
-
-- 변경 기록: [CHANGELOG.md](CHANGELOG.md)
-- 릴리스 노트: [release-notes/](release-notes/)
+- 사용 통계나 개인 파일을 수집하지 않습니다. 업데이트를 확인할 때 GitHub에 접속하며, 서버 기능은 사용자가 지정한 서버와만 통신합니다. 정보 메뉴의 링크는 기본 웹 브라우저에서 엽니다.
+- 설정·최근 폴더·즐겨찾기는 `settings.json`, 저장한 접속 정보·서버 지문·암호화한 암호는 `servers.json`에 이 컴퓨터에서만 보관합니다. 방문 기록과 저장한 서버는 앱에서 지울 수 있습니다.
+  - Windows: `%APPDATA%\Chojema FileDesk\`
+  - macOS: `~/Library/Application Support/Chojema FileDesk/`
+- 로컬 파일 삭제는 운영체제 휴지통으로 이동합니다. 서버 파일 삭제는 영구 삭제입니다.
 
 ## 라이선스
 

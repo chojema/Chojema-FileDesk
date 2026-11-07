@@ -22,6 +22,7 @@ export function defaultSettings(): Settings {
     showHidden: false,
     showDotFiles: false,
     confirmDelete: true,
+    checkUpdatesOnStart: false,
     recentDirs: [],
     favorites: [],
     panes: {
