@@ -1,6 +1,6 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ConflictPolicy, FileEntry, Lang, PaneSide, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Settings, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
@@ -65,7 +65,163 @@ const host: PaneHost = {
   // The pane activates itself before calling these, so the commands act on it.
   openHistory: () => void run('history'),
   openFavorites: () => void run('favorites'),
-  disconnect: pane => { if (!operating && !isModalOpen()) void disconnectServer(pane).catch(e => alertBox(t('dlg.error.title'), String(e))) }
+  disconnect: pane => { if (!operating && !isModalOpen()) void disconnectServer(pane).catch(e => alertBox(t('dlg.error.title'), String(e))) },
+  startDrag(pane, items, e) {
+    const paths = items.map((i) => i.path)
+    if (!paths.length || !e.dataTransfer) { e.preventDefault(); return }
+    if (isRemotePath(pane.path)) {
+      // Server items can only be dropped on the other pane.
+      e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths))
+      e.dataTransfer.effectAllowed = 'copyMove'
+      return
+    }
+    e.preventDefault()
+    api.startDrag(paths)
+  },
+  contextMenu: (pane, onRow, extended) => void showContextMenu(pane, onRow, extended)
+}
+
+// ---------- context menu ----------
+
+async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): Promise<void> {
+  if (operating || isModalOpen()) return
+  host.activate(pane)
+  const remote = isRemotePath(pane.path)
+  const sep: ContextItem = { type: 'separator' }
+  const item = (id: string, label: MsgKey, accelerator?: string): ContextItem => ({ id, label: t(label), accelerator })
+  // Full app menu (server folders) and the app commands added to the Explorer/Finder menu.
+  const items: ContextItem[] = onRow
+    ? [
+        item('open', 'key.F3', 'Enter'),
+        sep,
+        item('copy', 'menu.copy', 'F5'),
+        item('move', 'menu.move', 'F6'),
+        item('rename', 'menu.rename', 'F2'),
+        item('trash', remote ? 'server.remoteDeleteTitle' : 'menu.trash', 'F8'),
+        sep,
+        item('copyPath', 'tb.copyPath', 'CmdOrCtrl+Shift+C'),
+        sep,
+        item('mkdir', 'menu.newFolder', 'F7'),
+        item('refresh', 'menu.refresh', 'CmdOrCtrl+R')
+      ]
+    : [
+        item('mkdir', 'menu.newFolder', 'F7'),
+        item('refresh', 'menu.refresh', 'CmdOrCtrl+R'),
+        sep,
+        item('copyFolderPath', 'ctx.copyFolderPath'),
+        item('copyList', 'tb.copyList'),
+        sep,
+        item('sameDir', 'menu.sameDir', 'CmdOrCtrl+='),
+        item('swap', 'menu.swap', 'CmdOrCtrl+U')
+      ]
+  const extras: ContextItem[] = onRow
+    ? [
+        item('copy', 'menu.copy', 'F5'),
+        item('move', 'menu.move', 'F6'),
+        ...(api.platform === 'win32' ? [item('rename', 'menu.rename', 'F2')] : []),
+        item('copyPath', 'tb.copyPath', 'CmdOrCtrl+Shift+C'),
+        item('reveal', 'menu.reveal'),
+        item('refresh', 'menu.refresh', 'CmdOrCtrl+R')
+      ]
+    : [
+        item('refresh', 'menu.refresh', 'CmdOrCtrl+R'),
+        item('copyFolderPath', 'ctx.copyFolderPath'),
+        item('copyList', 'tb.copyList'),
+        item('terminal', 'tb.terminal'),
+        sep,
+        item('sameDir', 'menu.sameDir', 'CmdOrCtrl+='),
+        item('swap', 'menu.swap', 'CmdOrCtrl+U')
+      ]
+  const paths = onRow ? pane.targets().map((e) => e.path) : []
+  const result = await api.contextMenu({ paths, folder: pane.path, items, extras, extended })
+  if (result.changed) {
+    // Explorer/Finder commands may finish a moment later.
+    window.setTimeout(() => { void panes.left.refresh(); void panes.right.refresh() }, 600)
+  }
+  if (result.id === 'paste' && result.paths?.length) {
+    await guarded(() => executeTransfer('copy', result.paths!, pane.path))
+  } else if (result.id) await run(result.id)
+}
+
+async function guarded(fn: () => Promise<void>): Promise<void> {
+  if (operating || isModalOpen()) return
+  try { await fn() }
+  catch (e) { await alertBox(t('dlg.error.title'), e instanceof Error ? e.message : String(e)) }
+  if (!isModalOpen()) active.focus()
+}
+
+// ---------- clock and keyboard input mode ----------
+
+let imeMode = ''
+function renderIme(): void {
+  const node = document.getElementById('ime')!
+  node.hidden = !imeMode
+  node.className = `ime ${imeMode}`
+  node.textContent = imeMode === 'ko' ? t('ime.ko') : imeMode === 'en' ? t('ime.en') : imeMode.toUpperCase()
+  node.title = t('ime.title')
+}
+
+function startClock(): void {
+  const node = document.getElementById('clock')!
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const tick = () => {
+    const d = new Date()
+    const day = new Intl.DateTimeFormat(settings.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).format(d)
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    node.textContent = `${date}${settings.lang === 'ko' ? '' : ' '}(${day}) ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    // Align the next update with the start of the next second.
+    window.setTimeout(tick, 1000 - (Date.now() % 1000) + 5)
+  }
+  tick()
+}
+
+// ---------- drag and drop ----------
+
+const DRAG_TYPE = 'application/x-filedesk-paths'
+
+/** Folder comparison key without trailing separators. */
+function dirKey(p: string): string {
+  const k = p.replace(/[\\/]+$/, '')
+  return isRemotePath(p) || api.platform === 'linux' ? k : k.toLowerCase()
+}
+
+function parentDir(p: string): string {
+  const s = p.replace(/[\\/]+$/, '')
+  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
+  return i >= 0 ? s.slice(0, i) : s
+}
+
+function wireDrop(pane: Pane, root: HTMLElement): void {
+  const accepts = (e: DragEvent) => !!e.dataTransfer && (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes(DRAG_TYPE))
+  const moveKey = (e: DragEvent) => (isMac ? e.metaKey : e.shiftKey)
+  root.addEventListener('dragover', (e) => {
+    if (!accepts(e) || operating || isModalOpen()) return
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = moveKey(e) ? 'move' : 'copy'
+    pane.markDrop(e)
+  })
+  root.addEventListener('dragleave', (e) => {
+    if (!(e.relatedTarget instanceof Node) || !root.contains(e.relatedTarget)) pane.markDrop(null)
+  })
+  root.addEventListener('drop', (e) => {
+    pane.markDrop(null)
+    if (!accepts(e) || operating || isModalOpen()) return
+    e.preventDefault()
+    const dt = e.dataTransfer!
+    let sources: string[] = []
+    const internal = dt.getData(DRAG_TYPE)
+    if (internal) {
+      try { sources = (JSON.parse(internal) as unknown[]).filter((p): p is string => typeof p === 'string') } catch { sources = [] }
+    } else {
+      sources = [...dt.files].map((f) => api.pathForFile(f)).filter(Boolean)
+    }
+    const destDir = pane.dropDir(e)
+    // Dropping items back into the folder they came from does nothing.
+    sources = sources.filter((s) => dirKey(parentDir(s)) !== dirKey(destDir) && dirKey(s) !== dirKey(destDir))
+    if (!sources.length) return
+    host.activate(pane)
+    void guarded(() => executeTransfer(moveKey(e) ? 'move' : 'copy', sources, destDir))
+  })
 }
 
 // ---------- visited folders & favorites ----------
@@ -206,8 +362,11 @@ async function transfer(op: 'copy' | 'move'): Promise<void> {
     await alertBox(t('dlg.error.title'), `${t('err.notFound')}\n${destInput}`)
     return
   }
-  const destDir = resolved.value
-  const sources = items.map((i) => i.path)
+  await executeTransfer(op, items.map((i) => i.path), resolved.value)
+}
+
+/** Copies or moves sources into destDir after asking about name conflicts, then refreshes both panes. */
+async function executeTransfer(op: 'copy' | 'move', sources: string[], destDir: string): Promise<void> {
   let policy: ConflictPolicy = 'skip'
   const conflicts = await api.findConflicts(sources, destDir)
   if (conflicts.length) {
@@ -228,7 +387,7 @@ async function transfer(op: 'copy' | 'move'): Promise<void> {
   const result = await runWithProgress(op === 'copy' ? 'busy.copy' : 'busy.move', () =>
     api.transfer({ op, sources, destDir, policy })
   )
-  await Promise.all([src.refresh(), dst.refresh()])
+  await Promise.all([panes.left.refresh(), panes.right.refresh()])
   await reportErrors(result)
 }
 
@@ -326,6 +485,7 @@ async function openSettings(): Promise<void> {
   const dot = el('input', { type: 'checkbox', checked: settings.showDotFiles, id: 'set-dot' })
   const confirmDel = el('input', { type: 'checkbox', checked: settings.confirmDelete, id: 'set-confirm' })
   const autoUpdate = el('input', { type: 'checkbox', checked: settings.checkUpdatesOnStart, id: 'set-updates' })
+  const fkeys = el('input', { type: 'checkbox', checked: settings.showFkeys, id: 'set-fkeys' })
   const form = el(
     'div',
     {},
@@ -336,6 +496,7 @@ async function openSettings(): Promise<void> {
     el('label', { class: 'check' }, hidden, t('set.hidden')),
     el('label', { class: 'check' }, dot, t('set.dot')),
     el('div', { class: 'group-sep' }),
+    el('label', { class: 'check' }, fkeys, t('set.fkeys')),
     el('label', { class: 'check' }, confirmDel, t('set.confirmDelete')),
     el('label', { class: 'check' }, autoUpdate, t('update.onStart'))
   )
@@ -357,12 +518,15 @@ async function openSettings(): Promise<void> {
   settings.showDotFiles = dot.checked
   settings.confirmDelete = confirmDel.checked
   settings.checkUpdatesOnStart = autoUpdate.checked
+  settings.showFkeys = fkeys.checked
   applyTheme()
+  applyFkeys()
   if (langChanged) {
     setLang(settings.lang)
     await api.setMenuLang(settings.lang)
     renderFkeys()
     renderToolbar()
+    renderIme()
     await loadPlaces()
   }
   panes.left.rerender()
@@ -445,6 +609,14 @@ const commands: Record<string, () => void | Promise<void>> = {
     const e = active.currentEntry()
     void api.revealInOs(e ? e.path : active.path)
   },
+  openFolder: async () => {
+    const res = await api.openPath(active.path)
+    if (!res.ok) await alertBox(t('dlg.error.title'), active.path, res.error)
+  },
+  copyFolderPath: async () => {
+    await api.writeClipboard(active.path)
+    toast(t('toast.pathCopied', { path: active.path }))
+  },
   settings: openSettings,
   about: showAbout,
   connect: connectServer,
@@ -501,6 +673,10 @@ async function run(cmd: string): Promise<void> {
 }
 
 // ---------- function key bar ----------
+
+function applyFkeys(): void {
+  document.getElementById('fkeys')!.hidden = !settings.showFkeys
+}
 
 function renderFkeys(): void {
   const keys: [string, MsgKey, string, boolean?][] = [
@@ -655,6 +831,12 @@ async function boot(): Promise<void> {
   setLang(settings.lang)
   applyTheme()
   renderFkeys()
+  applyFkeys()
+  startClock()
+  api.onIme((mode) => { imeMode = mode; renderIme() })
+  imeMode = await api.getIme()
+  renderIme()
+  api.onAppError((message) => void alertBox(t('dlg.error.title'), message))
   initResize()
 
   for (const side of ['left', 'right'] as PaneSide[]) {
@@ -664,6 +846,7 @@ async function boot(): Promise<void> {
     p.sortAsc = settings.panes[side].sortAsc
     lastLocal[side] = isRemotePath(settings.panes[side].path) ? '' : settings.panes[side].path
     panes[side] = p
+    wireDrop(p, root)
   }
   active = panes.left
   panes.left.setActive(true)

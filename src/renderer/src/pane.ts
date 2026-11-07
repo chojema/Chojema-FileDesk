@@ -3,6 +3,15 @@ import { isRemotePath, remotePath } from '@shared/remote-path'
 import { api, collator, el, formatDate, formatSize, icon, isMac, t, type IconName } from './util'
 
 const ROW_H = 26
+
+// System icons are shared by extension; on Windows some types carry their own icon per file.
+const iconCache = new Map<string, string>()
+const iconPending = new Set<string>()
+const ownIcon = /^(exe|lnk|ico|url|scr|msc|cpl|appref-ms)$/i
+const PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="#8a8f98" stroke-width="1.2" d="M4 1.6h5.2L12.4 4.8v9.1a.6.6 0 0 1-.6.6H4a.6.6 0 0 1-.6-.6V2.2a.6.6 0 0 1 .6-.6zM9 1.8v3.3h3.2"/></svg>')}`
+function iconKey(e: FileEntry): string {
+  return api.platform === 'win32' && !isRemotePath(e.path) && ownIcon.test(e.ext) ? e.path : `.${e.ext.toLowerCase()}`
+}
 const BUFFER = 8
 
 interface Row {
@@ -26,6 +35,10 @@ export interface PaneHost {
   openHistory(pane: Pane): void
   openFavorites(pane: Pane): void
   disconnect(pane: Pane): void
+  /** A drag of the given items has started from this pane. */
+  startDrag(pane: Pane, items: FileEntry[], e: DragEvent): void
+  /** Right-click in the list; onRow is false for empty space and "..". */
+  contextMenu(pane: Pane, onRow: boolean, extended: boolean): void
 }
 
 export class Pane {
@@ -47,6 +60,9 @@ export class Pane {
   private placesList: Place[] = []
   private loadSeq = 0
   private parent: string | null = null
+  /** Selected row pressed without modifiers: clear the rest on click, keep it for a drag. */
+  private pendingClear = -1
+  private dropRow = -1
 
   private root: HTMLElement
   private placesEl: HTMLElement
@@ -121,6 +137,41 @@ export class Pane {
     this.listEl.addEventListener('scroll', () => this.renderRows())
     this.listEl.addEventListener('focus', () => this.host.activate(this))
     this.listEl.addEventListener('mousedown', (e) => this.onMouseDown(e))
+    this.listEl.addEventListener('click', (e) => {
+      const idx = this.pendingClear
+      this.pendingClear = -1
+      if (idx < 0 || this.rowIndexAt(e) !== idx) return
+      this.selected.clear()
+      this.updateRowStates()
+      void this.updateStatus()
+    })
+    this.listEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      const idx = this.rowIndexAt(e)
+      const entry = this.rows[idx]?.entry
+      this.pendingClear = -1
+      this.host.activate(this)
+      this.focus()
+      if (entry) {
+        if (!this.selected.has(entry.path)) this.selected.clear()
+        this.cursor = idx
+        this.anchor = idx
+        this.updateRowStates()
+        void this.updateStatus()
+      }
+      this.host.contextMenu(this, !!entry, e.shiftKey)
+    })
+    this.listEl.addEventListener('dragstart', (e) => {
+      const idx = this.rowIndexAt(e)
+      const entry = this.rows[idx]?.entry
+      this.pendingClear = -1
+      if (!entry) { e.preventDefault(); return }
+      if (this.selected.size && !this.selected.has(entry.path)) {
+        this.selected.clear()
+        this.updateRowStates()
+      }
+      this.host.startDrag(this, this.targets(), e)
+    })
     this.listEl.addEventListener('dblclick', (e) => {
       const idx = this.rowIndexAt(e)
       if (idx >= 0) this.openAt(idx)
@@ -450,7 +501,7 @@ export class Pane {
     if (e.button !== 0) return
     const idx = this.rowIndexAt(e)
     if (idx < 0) return
-    e.preventDefault()
+    // No preventDefault: it would stop rows from being dragged. Rows are not text-selectable.
     this.host.activate(this)
     this.focus()
     const toggle = isMac ? e.metaKey : e.ctrlKey
@@ -467,7 +518,9 @@ export class Pane {
       if (en) this.selected.has(en.path) ? this.selected.delete(en.path) : this.selected.add(en.path)
       this.anchor = idx
     } else {
-      this.selected.clear()
+      const en = this.rows[idx].entry
+      if (en && this.selected.has(en.path)) this.pendingClear = idx
+      else this.selected.clear()
       this.anchor = idx
     }
     this.cursor = idx
@@ -477,6 +530,21 @@ export class Pane {
     void this.updateStatus()
   }
 
+  /** Folder a drop at this point goes into: the folder row under the pointer, or the current folder. */
+  dropDir(e: DragEvent): string {
+    const entry = this.rows[this.rowIndexAt(e)]?.entry
+    return entry?.isDir && !entry.isSymlink ? entry.path : this.path
+  }
+
+  /** Highlights the pane or the folder row a drop would go into; null clears it. */
+  markDrop(e: DragEvent | null): void {
+    const idx = e ? this.rowIndexAt(e) : -1
+    const entry = this.rows[idx]?.entry
+    this.dropRow = entry?.isDir && !entry.isSymlink ? idx : -1
+    this.root.classList.toggle('drop-target', !!e && this.dropRow < 0)
+    this.updateRowStates()
+  }
+
   private updateRowStates(): void {
     for (const element of this.innerEl.children) {
       const div = element as HTMLElement
@@ -484,6 +552,7 @@ export class Pane {
       const entry = this.rows[idx]?.entry
       div.classList.toggle('cursor', idx === this.cursor)
       div.classList.toggle('selected', !!entry && this.selected.has(entry.path))
+      div.classList.toggle('drop-target', idx === this.dropRow)
     }
   }
 
@@ -601,6 +670,7 @@ export class Pane {
     div.dataset.rowIndex = String(i)
     div.style.top = `${i * ROW_H}px`
     if (i === this.cursor) div.classList.add('cursor')
+    if (i === this.dropRow) div.classList.add('drop-target')
     if (row.up) {
       div.classList.add('dir')
       div.append(
@@ -612,6 +682,7 @@ export class Pane {
       return div
     }
     const e = row.entry!
+    div.draggable = true
     if (e.isDir) div.classList.add('dir')
     if (e.hidden || e.dot) div.classList.add('hidden-entry')
     if (this.selected.has(e.path)) div.classList.add('selected')
@@ -619,12 +690,29 @@ export class Pane {
     const name = el('span', { textContent: e.isDir || !e.ext ? e.name : e.name.slice(0, -(e.ext.length + 1)) })
     div.title = e.name
     div.append(
-      el('div', { class: 'name' }, icon(e.isSymlink ? 'link' : e.isDir ? 'folder' : 'file'), name),
+      el('div', { class: 'name' }, e.isDir || e.isSymlink ? icon(e.isSymlink ? 'link' : 'folder') : this.fileIcon(e), name),
       el('div', { class: 'meta', textContent: e.ext }),
       el('div', { class: 'meta num', textContent: size }),
       el('div', { class: 'meta', textContent: formatDate(e.mtime) })
     )
     return div
+  }
+
+  private fileIcon(e: FileEntry): Element {
+    const key = iconKey(e)
+    const img = el('img', { class: 'icon sys-icon', src: iconCache.get(key) || PLACEHOLDER, alt: '', draggable: false })
+    img.dataset.iconKey = key
+    if (!iconCache.has(key) && !iconPending.has(key)) {
+      iconPending.add(key)
+      void api.fileIcon(e.path).then((data) => {
+        iconCache.set(key, data)
+        iconPending.delete(key)
+        if (!data) return
+        // Swap the image source in place so rows under the pointer stay the same nodes.
+        for (const node of this.innerEl.querySelectorAll<HTMLImageElement>('img.sys-icon')) if (node.dataset.iconKey === key) node.src = data
+      })
+    }
+    return img
   }
 
   private async updateStatus(): Promise<void> {

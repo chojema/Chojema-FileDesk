@@ -1,0 +1,185 @@
+import { app, BrowserWindow, dialog, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync, promises as fs } from 'node:fs'
+import path from 'node:path'
+import { createInterface } from 'node:readline'
+import { translate, type MsgKey } from '@shared/i18n'
+import type { ContextItem, Lang, ShellMenuResult } from '@shared/types'
+
+// macOS: live input-source tracking and a Finder-style context menu.
+
+const IME_SCRIPT = `ObjC.import('Carbon'); ObjC.import('Foundation')
+let last = ''
+while (true) {
+  $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.25))
+  const id = ObjC.castRefToObject($.TISGetInputSourceProperty($.TISCopyCurrentKeyboardInputSource(), $.kTISPropertyInputSourceID)).js
+  if (id !== last) { last = id; console.log(id) }
+}`
+
+let imeProc: ChildProcess | undefined
+
+export function startMacIme(onIme: (mode: string) => void): void {
+  if (process.platform !== 'darwin' || imeProc) return
+  const proc = spawn('osascript', ['-l', 'JavaScript', '-e', IME_SCRIPT], { stdio: ['ignore', 'ignore', 'pipe'] })
+  imeProc = proc
+  // JXA console.log writes to stderr.
+  createInterface({ input: proc.stderr! }).on('line', (id) => {
+    const s = id.trim()
+    onIme(/korean/i.test(s) ? 'ko' : /\.keylayout\./.test(s) ? 'en' : s.split('.').pop()?.toLowerCase() || '')
+  })
+  proc.on('exit', () => { imeProc = undefined })
+}
+
+export function stopMacIme(): void {
+  imeProc?.kill()
+  imeProc = undefined
+}
+
+const run = (cmd: string, args: string[], cwd?: string) => new Promise<string>((resolve, reject) => {
+  execFile(cmd, args, { cwd, maxBuffer: 1 << 20 }, (err, stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve(stdout)))
+})
+
+const OPEN_WITH = `function run(argv) {
+  ObjC.import('AppKit')
+  const ws = $.NSWorkspace.sharedWorkspace, fm = $.NSFileManager.defaultManager
+  const url = $.NSURL.fileURLWithPath(argv[0])
+  const def = ws.URLForApplicationToOpenURL(url)
+  const list = ws.URLsForApplicationsToOpenURL(url)
+  const out = []
+  const add = (u) => { if (u && !u.isNil()) { const p = u.path.js; if (!out.some(a => a.path === p)) out.push({ path: p, name: fm.displayNameAtPath(p).js.replace(/\\.app$/, '') }) } }
+  add(def)
+  for (let i = 0; i < Math.min(list.count, 30); i++) add(list.objectAtIndex(i))
+  return JSON.stringify(out)
+}`
+
+interface AppInfo { path: string; name: string }
+
+async function openWithApps(file: string): Promise<AppInfo[]> {
+  try { return JSON.parse(await run('osascript', ['-l', 'JavaScript', '-e', OPEN_WITH, file])) as AppInfo[] } catch { return [] }
+}
+
+async function appIcon(p: string) {
+  try { return (await app.getFileIcon(p, { size: 'small' })).resize({ width: 16, height: 16 }) } catch { return nativeImage.createEmpty() }
+}
+
+const finder = (lines: string[], args: string[]) => run('osascript', ['-e', 'on run argv', '-e', 'tell application "Finder"', ...lines.flatMap(l => ['-e', l]), '-e', 'end tell', '-e', 'end run', ...args])
+
+const getInfo = (paths: string[]) => finder(['activate', 'repeat with p in argv', 'open information window of (POSIX file (contents of p) as alias)', 'end repeat'], paths)
+const makeAlias = (paths: string[]) => finder(['repeat with p in argv', 'set f to POSIX file (contents of p) as alias', 'make new alias file at (container of f) to f', 'end repeat'], paths)
+
+async function unique(dir: string, stem: string, ext: string): Promise<string> {
+  for (let i = 1; ; i++) {
+    const target = path.join(dir, `${stem}${i > 1 ? ` ${i}` : ''}${ext}`)
+    if (!existsSync(target)) return target
+  }
+}
+
+async function duplicate(paths: string[], lang: Lang): Promise<void> {
+  const word = translate(lang, 'fx.copySuffix')
+  for (const p of paths) {
+    const stat = await fs.lstat(p)
+    const ext = stat.isDirectory() ? '' : path.extname(p)
+    const target = await unique(path.dirname(p), `${path.basename(p, ext)} ${word}`, ext)
+    await fs.cp(p, target, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true, force: false })
+  }
+}
+
+async function compress(paths: string[], lang: Lang): Promise<void> {
+  const dir = path.dirname(paths[0])
+  if (paths.length === 1) {
+    const target = await unique(dir, path.basename(paths[0]), '.zip')
+    await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', paths[0], target])
+  } else {
+    const target = await unique(dir, translate(lang, 'fx.archive'), '.zip')
+    await run('zip', ['-r', '-y', '-q', target, ...paths.map(p => path.basename(p))], dir)
+  }
+}
+
+const PASTEBOARD = `function run(argv) {
+  ObjC.import('AppKit')
+  const pb = $.NSPasteboard.generalPasteboard
+  if (argv.length) {
+    pb.clearContents
+    pb.writeObjects($(argv.map(p => $.NSURL.fileURLWithPath(p))))
+    return '[]'
+  }
+  const urls = pb.readObjectsForClassesOptions($([$.NSURL]), $({ NSPasteboardURLReadingFileURLsOnlyKey: true }))
+  const out = []
+  if (urls && !urls.isNil()) for (let i = 0; i < urls.count; i++) out.push(urls.objectAtIndex(i).path.js)
+  return JSON.stringify(out)
+}`
+
+/** Puts files on the pasteboard the way Finder does, so Finder and other apps can paste them. */
+async function copyFiles(paths: string[]): Promise<void> {
+  await run('osascript', ['-l', 'JavaScript', '-e', PASTEBOARD, ...paths])
+}
+
+/** Files copied in Finder (or by this app), if any. */
+export async function clipboardFiles(): Promise<string[]> {
+  try {
+    const list = JSON.parse(await run('osascript', ['-l', 'JavaScript', '-e', PASTEBOARD])) as unknown[]
+    return list.filter((p): p is string => typeof p === 'string' && path.isAbsolute(p))
+  } catch { return [] }
+}
+
+export interface MacMenuRequest { paths: string[]; folder: string; extras: ContextItem[] }
+
+export function showMacMenu(win: BrowserWindow, req: MacMenuRequest, lang: Lang, onError: (message: string) => void): Promise<ShellMenuResult> {
+  const t = (k: MsgKey, v?: Record<string, string | number>) => translate(lang, k, v)
+  return new Promise((resolve) => {
+    void (async () => {
+      let settled = false
+      const done = (r: ShellMenuResult) => { if (!settled) { settled = true; resolve(r) } }
+      const act = (fn: () => Promise<void> | void, changed = false) => () => {
+        done({ changed })
+        void Promise.resolve().then(fn).catch(e => onError(e instanceof Error ? e.message : String(e)))
+      }
+      const extras: MenuItemConstructorOptions[] = req.extras.map(it => it.type === 'separator'
+        ? { type: 'separator' }
+        : { label: it.label, accelerator: it.accelerator, registerAccelerator: false, click: () => done({ id: it.id }) })
+      const items: MenuItemConstructorOptions[] = []
+      const { paths } = req
+      if (paths.length) {
+        const apps = await openWithApps(paths[0])
+        const icons = await Promise.all(apps.map(a => appIcon(a.path)))
+        const openWith = (appPath: string) => act(() => run('open', ['-a', appPath, ...paths]).then(() => undefined))
+        const other = act(async () => {
+          const pick = await dialog.showOpenDialog(win, { defaultPath: '/Applications', properties: ['openFile'], filters: [{ name: 'Applications', extensions: ['app'] }] })
+          if (!pick.canceled && pick.filePaths[0]) await run('open', ['-a', pick.filePaths[0], ...paths])
+        })
+        const name = path.basename(paths[0])
+        items.push(
+          { label: t('key.F3'), click: () => done({ id: 'open' }) },
+          { label: t('fx.openWith'), submenu: [
+            ...apps.map((a, i) => ({ label: i === 0 ? t('fx.default', { app: a.name }) : a.name, icon: icons[i], click: openWith(a.path) })),
+            ...(apps.length ? [{ type: 'separator' as const }] : []),
+            { label: t('fx.otherApp'), click: other }
+          ] },
+          { type: 'separator' },
+          { label: t('menu.trash'), click: () => done({ id: 'trash' }) },
+          { type: 'separator' },
+          { label: t('fx.getInfo'), click: act(() => getInfo(paths).then(() => undefined)) },
+          ...(paths.length === 1 ? [{ label: t('menu.rename'), click: () => done({ id: 'rename' }) }] : []),
+          { label: paths.length === 1 ? t('fx.compressOne', { name }) : t('fx.compressMany', { n: paths.length }), click: act(() => compress(paths, lang), true) },
+          { label: t('fx.duplicate'), click: act(() => duplicate(paths, lang), true) },
+          { label: t('fx.alias'), click: act(() => makeAlias(paths).then(() => undefined), true) },
+          { label: paths.length === 1 ? t('fx.quickLookOne', { name }) : t('fx.quickLook'), click: act(() => win.previewFile(paths[0])) },
+          { type: 'separator' },
+          { label: t('fx.copy'), click: act(() => copyFiles(paths)) },
+          { role: 'shareMenu', label: t('fx.share'), sharingItem: { filePaths: paths } }
+        )
+      } else {
+        const pasted = await clipboardFiles()
+        items.push(
+          { label: t('fx.newFolder'), click: () => done({ id: 'mkdir' }) },
+          { type: 'separator' },
+          { label: t('fx.getInfo'), click: act(() => getInfo([req.folder]).then(() => undefined)) },
+          { label: pasted.length > 1 ? t('fx.pasteMany', { n: pasted.length }) : t('fx.paste'), enabled: pasted.length > 0, click: () => done({ id: 'paste', paths: pasted }) }
+        )
+      }
+      if (extras.length) items.push({ type: 'separator' }, ...extras)
+      // The close callback can run before a click handler; give the click a moment to win.
+      Menu.buildFromTemplate(items).popup({ window: win, callback: () => setTimeout(() => done({}), 100) })
+    })().catch(e => { onError(e instanceof Error ? e.message : String(e)); resolve({}) })
+  })
+}

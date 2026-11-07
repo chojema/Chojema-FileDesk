@@ -1,5 +1,4 @@
-import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
-import { APP_LINKS } from '@shared/links'
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 import { translate, type MsgKey } from '@shared/i18n'
 import type { Settings } from '@shared/types'
 
@@ -103,9 +102,7 @@ export function buildMenu(win: BrowserWindow, settings: Settings, connected = fa
   template.push({
     label: t('menu.info'),
     submenu: [
-      cmd('menu.about', 'about'), cmd('update.check', 'checkUpdate'), cmd('menu.shortcuts', 'shortcuts'),
-      { type: 'separator' },
-      ...APP_LINKS.map(link => ({ label: link.label, click: () => { void shell.openExternal(link.url) } }))
+      cmd('menu.about', 'about'), cmd('update.check', 'checkUpdate'), cmd('menu.shortcuts', 'shortcuts')
     ]
   })
 

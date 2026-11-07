@@ -1,7 +1,7 @@
 <p align="center"><img src="resources/icon-256.png" width="96" height="96" alt="Chojema FileDesk"></p>
 <h1 align="center">Chojema FileDesk</h1>
 <p align="center">A two-pane file manager for Windows and macOS</p>
-<p align="center"><a href="README.md">한국어</a> · <b>English</b></p>
+<p align="center"><a href="README.md">한국어</a> | <b>English</b></p>
 
 ## Install
 
@@ -33,7 +33,11 @@ On macOS, copy the app from the DMG to Applications. If the first launch is bloc
 | `Ctrl/⌘+.` | Toggle hidden items |
 | `F10` | Settings |
 
-On macOS, hold `fn` if function keys do not respond.
+On macOS, hold `fn` if function keys do not respond. The function key bar can be turned off in Settings. The date (weekday), time and keyboard input mode appear at the top right.
+
+## Mouse
+
+Right-click the file list for the Explorer menu on Windows or a Finder-style menu on macOS. Drag files and folders to the other pane or to another app; items dragged in from another app onto a pane or folder are copied. Hold `Shift` on Windows or `⌘` on macOS while dropping to move instead. Server files can only be dragged to the other pane.
 
 ## Servers
 
@@ -51,10 +55,10 @@ FTP/FTPS servers must also allow their passive data ports.
 
 ## Updates
 
-Use **Information → Check for Updates** to download an installer. Complete installation on Windows; on macOS, quit the app and replace it with the new version. Startup checks can be enabled in Settings.
+Use **Information → Check for Updates** to download and open an installer; FileDesk then quits automatically. Complete installation on Windows; on macOS, copy the new app to Applications. The portable version saves the new executable next to the current one. Startup checks can be enabled in Settings.
 
 ## Data
 
 Settings and server profiles stay on this computer. Password storage is optional and uses OS encryption. No usage statistics are collected.
 
-[MIT License](LICENSE) · © 2026 Chulwoo Park
+[MIT License](LICENSE) | © 2026 Chulwoo Park

@@ -50,6 +50,7 @@ export interface Settings {
   confirmDelete: boolean
   checkUpdatesOnStart: boolean
   windowStart: 'restore' | 'reset'
+  showFkeys: boolean
   /** Most recently visited folders, newest first (local only). */
   recentDirs: string[]
   favorites: string[]
@@ -113,6 +114,35 @@ export interface Result<T> {
   error?: string
 }
 
+export interface ContextItem {
+  id?: string
+  label?: string
+  accelerator?: string
+  enabled?: boolean
+  type?: 'separator'
+}
+
+export interface ShellMenuRequest {
+  /** Items the menu acts on; empty for the folder background. */
+  paths: string[]
+  folder: string
+  /** Complete app menu, used where no system menu is available (server folders). */
+  items: ContextItem[]
+  /** App commands added to the Explorer/Finder menu. */
+  extras: ContextItem[]
+  /** Shift+right-click: Windows extended verbs. */
+  extended?: boolean
+}
+
+export interface ShellMenuResult {
+  /** App command to run. */
+  id?: string
+  /** Files for the paste command. */
+  paths?: string[]
+  /** A system command may have changed the folder. */
+  changed?: boolean
+}
+
 export interface FileDeskApi {
   platform: NodeJS.Platform
   getVersion(): Promise<string>
@@ -145,4 +175,16 @@ export interface FileDeskApi {
   disconnectServer(root: string): Promise<void>
   serverConnections(): Promise<ServerConnection[]>
   pickPrivateKey(): Promise<string | null>
+  /** Local path of a file dropped from the OS, or '' when it has none. */
+  pathForFile(file: File): string
+  /** Starts a native drag of local files out of the window. */
+  startDrag(paths: string[]): void
+  /** Shows a native context menu and resolves with the chosen item id. */
+  contextMenu(req: ShellMenuRequest): Promise<ShellMenuResult>
+  /** Keyboard input mode: 'ko', 'en', another short code, or '' when unknown. */
+  getIme(): Promise<string>
+  onIme(cb: (mode: string) => void): () => void
+  onAppError(cb: (message: string) => void): () => void
+  /** System file-type icon as a data URL ('' when unavailable). */
+  fileIcon(path: string): Promise<string>
 }

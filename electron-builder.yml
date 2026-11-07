@@ -7,6 +7,8 @@ directories:
 files:
   - out/**/*
   - package.json
+  # Drag image for files dragged out of the window.
+  - resources/icon-256.png
   - "!**/*.map"
   - "!node_modules/cpu-features/**/*"
   - "!node_modules/ssh2/lib/protocol/crypto/build/**/*"
@@ -21,6 +23,8 @@ mac:
   # "-" = ad-hoc signature (required for Apple Silicon). Set CSC_NAME to use a Developer ID.
   identity: "-"
   hardenedRuntime: false
+  extendInfo:
+    NSAppleEventsUsageDescription: Finder의 정보 가져오기와 가상본 만들기에 사용합니다. Used for Finder Get Info and Make Alias.
   target:
     - target: dmg
       arch: [arm64, x64]

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { FileDeskApi, Progress, UpdateProgress } from '@shared/types'
 
 const api: FileDeskApi = {
@@ -30,6 +30,21 @@ const api: FileDeskApi = {
   disconnectServer: (root) => ipcRenderer.invoke('server:disconnect', root),
   serverConnections: () => ipcRenderer.invoke('server:connections'),
   pickPrivateKey: () => ipcRenderer.invoke('server:key'),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  startDrag: (paths) => ipcRenderer.send('drag:start', paths),
+  contextMenu: (req) => ipcRenderer.invoke('menu:context', req),
+  getIme: () => ipcRenderer.invoke('ime:get'),
+  onIme: (cb) => {
+    const h = (_e: IpcRendererEvent, mode: string) => cb(mode)
+    ipcRenderer.on('ime', h)
+    return () => ipcRenderer.removeListener('ime', h)
+  },
+  onAppError: (cb) => {
+    const h = (_e: IpcRendererEvent, message: string) => cb(message)
+    ipcRenderer.on('app:error', h)
+    return () => ipcRenderer.removeListener('app:error', h)
+  },
+  fileIcon: (p) => ipcRenderer.invoke('fs:icon', p),
   onUpdateProgress: (cb) => {
     const handler = (_e: IpcRendererEvent, p: UpdateProgress) => cb(p)
     ipcRenderer.on('update:progress', handler)

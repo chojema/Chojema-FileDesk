@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, screen } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, nativeImage, nativeTheme, screen, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import path from 'node:path'
-import { promises as fs } from 'node:fs'
+import { existsSync, promises as fs } from 'node:fs'
 import { translate } from '@shared/i18n'
 import type { Lang, Settings, TransferRequest } from '@shared/types'
 import * as fsops from './fsops'
@@ -12,10 +12,14 @@ import { createConnections } from './connections'
 import { checkUpdate, downloadUpdate } from './updates'
 import { APP_LINKS } from '@shared/links'
 import { isRemotePath } from '@shared/remote-path'
-import type { ConnectRequest } from '@shared/types'
+import type { ConnectRequest, ContextItem, ShellMenuRequest, ShellMenuResult } from '@shared/types'
+import { showWinMenu, startWinHelper, stopWinHelper, winHelperReady } from './win-helper'
+import { showMacMenu, startMacIme, stopMacIme } from './mac-shell'
 import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
+import dragIconPath from '../../resources/icon-256.png?asset'
 
 let win: BrowserWindow | null = null
+let dragIcon: NativeImage | undefined
 let settings: Settings
 const servers = createConnections(() => settings?.lang ?? 'ko')
 const files = new FileService(fsops, servers.manager)
@@ -62,11 +66,28 @@ function createWindow(): void {
   window.on('unmaximize', () => { maximized = false; scheduleSave() })
   window.on('close', saveBounds)
   window.once('closed', () => clearTimeout(timer))
-  window.once('ready-to-show', () => { if (state.maximized) window.maximize(); window.show() })
+  window.once('ready-to-show', () => {
+    if (state.maximized) window.maximize()
+    window.show()
+    startWinHelper(setIme)
+    startMacIme(setIme)
+  })
 
   // Never navigate away from the app or open new windows.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
+  // Text fields get the usual cut/copy/paste menu; file lists build their own.
+  win.webContents.on('context-menu', (_e, params) => {
+    if (!params.isEditable) return
+    const t = (k: Parameters<typeof translate>[1]) => translate(settings.lang, k)
+    Menu.buildFromTemplate([
+      { role: 'cut', label: t('ctx.cut'), enabled: params.editFlags.canCut },
+      { role: 'copy', label: t('ctx.copy'), enabled: params.editFlags.canCopy },
+      { role: 'paste', label: t('ctx.paste'), enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', label: t('ctx.selectAll') }
+    ]).popup({ window })
+  })
 
   buildMenu(win, settings, servers.manager.connections().length > 0)
 
@@ -154,6 +175,57 @@ function registerIpc(): void {
     await servers.manager.disconnect(root)
     if (win) buildMenu(win, settings, servers.manager.connections().length > 0)
   })
+  // System file-type icons. Server files use a local placeholder with the same extension.
+  ipcMain.handle('fs:icon', async (_e, p: unknown) => {
+    if (typeof p !== 'string') return ''
+    try {
+      let target = p
+      if (isRemotePath(p)) {
+        const ext = path.extname(decodeURIComponent(new URL(p).pathname)).slice(1)
+        const dir = path.join(app.getPath('temp'), 'filedesk-icons')
+        target = path.join(dir, /^[a-z0-9_-]{1,16}$/i.test(ext) ? `file.${ext.toLowerCase()}` : 'file')
+        if (!existsSync(target)) { await fs.mkdir(dir, { recursive: true }); await fs.writeFile(target, '') }
+      } else if (!path.isAbsolute(p)) return ''
+      const image = await app.getFileIcon(target, { size: 'normal' })
+      return image.isEmpty() ? '' : image.toDataURL()
+    } catch { return '' }
+  })
+  ipcMain.handle('menu:context', async (e, req: ShellMenuRequest) => {
+    const owner = BrowserWindow.fromWebContents(e.sender)
+    if (!owner || !req || typeof req.folder !== 'string' || !Array.isArray(req.paths) || !Array.isArray(req.items) || !Array.isArray(req.extras) ||
+      req.paths.length > 5000 || req.items.length > 40 || req.extras.length > 40) return {}
+    const local = !isRemotePath(req.folder) && path.isAbsolute(req.folder) &&
+      req.paths.every((p) => typeof p === 'string' && !isRemotePath(p) && path.isAbsolute(p))
+    if (local && process.platform === 'darwin') {
+      return showMacMenu(owner, req, settings.lang, (message) => owner.webContents.send('app:error', message))
+    }
+    if (local && process.platform === 'win32' && winHelperReady()) {
+      try {
+        const sep = (it: ContextItem) => it?.type === 'separator'
+        const result = await showWinMenu({
+          paths: req.paths,
+          folder: req.folder,
+          ids: req.extras.map((it) => (sep(it) ? '-' : String(it.id))),
+          labels: req.extras.map((it) => (sep(it) ? '' : `${String(it.label)}${it.accelerator ? `\t${it.accelerator.replace('CmdOrCtrl', 'Ctrl')}` : ''}`)),
+          extended: !!req.extended
+        })
+        if (result.startsWith('app:')) return { id: result.slice(4) }
+        return result === 'shell' ? { changed: true } : {}
+      } catch (err) {
+        console.warn('Explorer menu failed, using the app menu:', err)
+      }
+    }
+    return appMenu(owner, req.items)
+  })
+  ipcMain.handle('ime:get', () => imeMode)
+  // Drag local files out of the window into Finder/Explorer or another app.
+  ipcMain.on('drag:start', (e, paths: unknown) => {
+    if (!Array.isArray(paths) || !paths.length || paths.length > 10000) return
+    const items = paths.filter((p): p is string => typeof p === 'string' && path.isAbsolute(p) && !isRemotePath(p) && existsSync(p))
+    if (items.length !== paths.length) return
+    dragIcon ??= nativeImage.createFromPath(dragIconPath).resize({ width: 48, height: 48 })
+    e.sender.startDrag({ file: items[0], files: items, icon: dragIcon })
+  })
   ipcMain.handle('server:connections', () => servers.manager.connections())
   ipcMain.handle('server:key', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile'], title: settings.lang === 'ko' ? 'SSH 개인 키 선택' : 'Select SSH private key' })
@@ -161,7 +233,33 @@ function registerIpc(): void {
   })
 }
 
-app.on('before-quit', () => { void servers.manager.closeAll() })
+function appMenu(owner: BrowserWindow, items: ContextItem[]): Promise<ShellMenuResult> {
+  return new Promise((resolve) => {
+    const template: MenuItemConstructorOptions[] = items.map((it) => it?.type === 'separator'
+      ? { type: 'separator' }
+      : {
+          label: String(it?.label ?? '').slice(0, 200),
+          accelerator: typeof it?.accelerator === 'string' ? it.accelerator : undefined,
+          registerAccelerator: false,
+          enabled: it?.enabled !== false,
+          click: () => resolve({ id: String(it?.id ?? '') })
+        })
+    // On some platforms the close callback runs before the click handler.
+    Menu.buildFromTemplate(template).popup({ window: owner, callback: () => setTimeout(() => resolve({}), 100) })
+  })
+}
+
+let imeMode = ''
+function setIme(mode: string): void {
+  imeMode = mode
+  win?.webContents.send('ime', mode)
+}
+
+app.on('before-quit', () => {
+  void servers.manager.closeAll()
+  stopWinHelper()
+  stopMacIme()
+})
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {

@@ -29,6 +29,8 @@ export async function showUpdate(quiet = false): Promise<void> {
   try {
     const file = await api.downloadUpdate()
     off(); downloading.close()
-    await alertBox(t(file.ok ? 'update.check' : 'dlg.error.title'), file.ok ? t('update.opened') : file.error || '', file.ok ? file.value : undefined)
+    // On success the main process quits shortly; just say so meanwhile.
+    if (file.ok) busy(t('update.opened'))
+    else await alertBox(t('dlg.error.title'), file.error || '')
   } finally { off(); downloading.close() }
 }

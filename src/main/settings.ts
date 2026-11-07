@@ -24,6 +24,7 @@ export function defaultSettings(): Settings {
     confirmDelete: true,
     checkUpdatesOnStart: false,
     windowStart: 'restore',
+    showFkeys: true,
     recentDirs: [],
     favorites: [],
     panes: {
@@ -43,6 +44,7 @@ export function loadSettings(): Settings {
     raw.recentDirs = strings(raw.recentDirs)
     raw.favorites = strings(raw.favorites)
     raw.windowStart = raw.windowStart === 'reset' ? 'reset' : 'restore'
+    raw.showFkeys = raw.showFkeys !== false
     return {
       ...def,
       ...raw,

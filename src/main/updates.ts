@@ -37,9 +37,18 @@ export async function downloadUpdate(progress: (p: UpdateProgress) => void): Pro
     const target = path.join(work, asset.name)
     const response = await fetch(assetUrl(asset, release.tag_name), { signal: AbortSignal.timeout(30 * 60 * 1000) })
     await checkedDownload(response, target, asset.size, checksum, progress)
-    const error = await shell.openPath(target)
+    let installer = target
+    // A portable build is replaced by placing the new executable next to the current one.
+    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
+    if (portableDir) {
+      const beside = path.join(portableDir, asset.name)
+      try { await fs.copyFile(target, beside); installer = beside } catch { /* keep the verified temp copy */ }
+    }
+    const error = await shell.openPath(installer)
     if (error) throw new Error(error)
-    return target
+    // Quit so the installer (or Finder on macOS) can replace the running app.
+    setTimeout(() => app.quit(), 1500)
+    return installer
   } catch (e) { if (work) await fs.rm(work, { recursive: true, force: true }); throw e }
   finally { busy = false }
 }
