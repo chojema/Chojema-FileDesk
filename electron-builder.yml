@@ -1,0 +1,48 @@
+appId: com.chojema.filedesk
+productName: Chojema FileDesk
+copyright: Copyright © 2026 Chulwoo Park
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+asar: true
+publish: null
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  # "-" = ad-hoc signature (required for Apple Silicon). Set CSC_NAME to use a Developer ID.
+  identity: "-"
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  artifactName: Chojema-FileDesk-${version}-mac-${arch}.${ext}
+dmg:
+  title: Chojema FileDesk ${version}
+
+win:
+  icon: build/icon-win.png
+  executableName: ChojemaFileDesk
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+  artifactName: Chojema-FileDesk-${version}-win-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Chojema FileDesk
+  installerLanguages: [ko_KR, en_US]
+  language: "1042"
+  artifactName: Chojema-FileDesk-${version}-win-${arch}-setup.${ext}
+portable:
+  artifactName: Chojema-FileDesk-${version}-win-${arch}-portable.${ext}

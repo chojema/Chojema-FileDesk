@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:"
+    />
+    <title>Chojema FileDesk</title>
+  </head>
+  <body>
+    <div id="app">
+      <main class="panes" id="panes">
+        <section class="pane" data-side="left"></section>
+        <nav class="toolbar" id="toolbar" aria-orientation="vertical"></nav>
+        <section class="pane" data-side="right"></section>
+      </main>
+      <footer class="fkeys" id="fkeys"></footer>
+    </div>
+    <div id="modal-root"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

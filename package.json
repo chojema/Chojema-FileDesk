@@ -1,0 +1,31 @@
+{
+  "name": "chojema-filedesk",
+  "productName": "Chojema FileDesk",
+  "version": "0.1.0",
+  "description": "Dual-pane file manager for Windows and macOS",
+  "author": "Chulwoo Park",
+  "license": "MIT",
+  "private": true,
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "electron-vite preview",
+    "icons": "node scripts/make-icons.mjs",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:all": "npm run build && electron-builder --mac --win --publish never",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "release:notes": "node scripts/release-notes.mjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^26.6.6",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  }
+}
