@@ -1,7 +1,7 @@
 {
   "name": "chojema-filedesk",
   "productName": "Chojema FileDesk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dual-pane file manager for Windows and macOS",
   "author": "Chulwoo Park",
   "license": "MIT",
@@ -18,7 +18,8 @@
     "dist:all": "npm run build && electron-builder --mac --win --publish never",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:mouse": "node scripts/test-mouse.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

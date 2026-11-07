@@ -147,7 +147,6 @@ export class Pane {
 
   setActive(active: boolean): void {
     this.root.classList.toggle('active', active)
-    this.renderRows()
   }
 
   setPlaces(list: Place[]): void {
@@ -185,6 +184,7 @@ export class Pane {
     if (idx >= 0) this.cursor = idx
     else if (!sameDir) this.cursor = 0
     this.cursor = Math.min(this.cursor, Math.max(0, this.rows.length - 1))
+    if (!sameDir) this.anchor = this.cursor
     // Drop selections that no longer exist.
     const names = new Set(this.entries.map((e) => e.path))
     for (const p of this.selected) if (!names.has(p)) this.selected.delete(p)
@@ -432,18 +432,24 @@ export class Pane {
   // ---------- mouse ----------
 
   private rowIndexAt(e: MouseEvent): number {
-    const rect = this.listEl.getBoundingClientRect()
-    const y = e.clientY - rect.top + this.listEl.scrollTop
-    const idx = Math.floor(y / ROW_H)
-    return idx >= 0 && idx < this.rows.length ? idx : -1
+    const element = e.target instanceof Element ? e.target.closest<HTMLElement>('.row') : null
+    if (!element || !this.innerEl.contains(element)) return -1
+    const idx = Number(element.dataset.rowIndex)
+    return Number.isInteger(idx) && idx >= 0 && idx < this.rows.length ? idx : -1
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return
     const idx = this.rowIndexAt(e)
     if (idx < 0) return
+    e.preventDefault()
+    this.host.activate(this)
+    this.focus()
     const toggle = isMac ? e.metaKey : e.ctrlKey
     if (e.shiftKey) {
-      const [a, b] = this.anchor < idx ? [this.anchor, idx] : [idx, this.anchor]
+      const anchor = Math.max(0, Math.min(this.anchor, this.rows.length - 1))
+      const [a, b] = anchor < idx ? [anchor, idx] : [idx, anchor]
+      if (!toggle) this.selected.clear()
       for (let i = a; i <= b; i++) {
         const en = this.rows[i].entry
         if (en) this.selected.add(en.path)
@@ -453,11 +459,24 @@ export class Pane {
       if (en) this.selected.has(en.path) ? this.selected.delete(en.path) : this.selected.add(en.path)
       this.anchor = idx
     } else {
+      this.selected.clear()
       this.anchor = idx
     }
     this.cursor = idx
-    this.renderRows()
+    // Keep pointer targets alive between down/up and both clicks of a double-click.
+    // Replacing rows here prevents Chromium from dispatching click/dblclick.
+    this.updateRowStates()
     void this.updateStatus()
+  }
+
+  private updateRowStates(): void {
+    for (const element of this.innerEl.children) {
+      const div = element as HTMLElement
+      const idx = Number(div.dataset.rowIndex)
+      const entry = this.rows[idx]?.entry
+      div.classList.toggle('cursor', idx === this.cursor)
+      div.classList.toggle('selected', !!entry && this.selected.has(entry.path))
+    }
   }
 
   // ---------- rendering ----------
@@ -567,6 +586,7 @@ export class Pane {
   private renderRow(i: number): HTMLElement {
     const row = this.rows[i]
     const div = el('div', { class: 'row' })
+    div.dataset.rowIndex = String(i)
     div.style.top = `${i * ROW_H}px`
     if (i === this.cursor) div.classList.add('cursor')
     if (row.up) {
