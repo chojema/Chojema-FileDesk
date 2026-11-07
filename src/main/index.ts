@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, nativeTheme, screen } from 'electron'
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { translate } from '@shared/i18n'
@@ -13,6 +13,7 @@ import { checkUpdate, downloadUpdate } from './updates'
 import { APP_LINKS } from '@shared/links'
 import { isRemotePath } from '@shared/remote-path'
 import type { ConnectRequest } from '@shared/types'
+import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
 
 let win: BrowserWindow | null = null
 let settings: Settings
@@ -20,11 +21,16 @@ const servers = createConnections(() => settings?.lang ?? 'ko')
 const files = new FileService(fsops, servers.manager)
 
 function createWindow(): void {
+  const stateFile = path.join(app.getPath('userData'), 'window-state.json')
+  const state = fitWindow(settings.windowStart === 'restore' ? readWindowState(stateFile) : undefined,
+    screen.getAllDisplays().map(d => d.workArea), screen.getPrimaryDisplay().workArea)
   win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 760,
-    minHeight: 480,
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
+    minWidth: Math.min(MIN_WINDOW.width, state.width),
+    minHeight: Math.min(MIN_WINDOW.height, state.height),
     show: false,
     title: 'Chojema FileDesk',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#16181d' : '#f6f7f9',
@@ -39,13 +45,30 @@ function createWindow(): void {
     }
   })
 
-  win.once('ready-to-show', () => win?.show())
+  const window = win
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let maximized = state.maximized
+  const saveBounds = () => {
+    clearTimeout(timer)
+    if (window.isDestroyed()) return
+    if (!window.isMinimized()) maximized = window.isMaximized()
+    try { writeWindowState(stateFile, { ...window.getNormalBounds(), maximized }) }
+    catch (e) { console.warn('Cannot save window state:', e) }
+  }
+  const scheduleSave = () => { clearTimeout(timer); timer = setTimeout(saveBounds, 150) }
+  window.on('move', scheduleSave)
+  window.on('resize', scheduleSave)
+  window.on('maximize', () => { maximized = true; scheduleSave() })
+  window.on('unmaximize', () => { maximized = false; scheduleSave() })
+  window.on('close', saveBounds)
+  window.once('closed', () => clearTimeout(timer))
+  window.once('ready-to-show', () => { if (state.maximized) window.maximize(); window.show() })
 
   // Never navigate away from the app or open new windows.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
 
-  buildMenu(win, settings)
+  buildMenu(win, settings, servers.manager.connections().length > 0)
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -63,11 +86,11 @@ function registerIpc(): void {
   ipcMain.handle('settings:save', async (_e, s: Settings) => {
     settings = s
     nativeTheme.themeSource = s.theme
-    if (win) buildMenu(win, s) // keep menu language and checkbox states in sync
+    if (win) buildMenu(win, s, servers.manager.connections().length > 0)
     await saveSettings(s)
   })
   ipcMain.handle('menu:lang', (_e, lang: Lang) => {
-    if (win) buildMenu(win, { ...settings, lang })
+    if (win) buildMenu(win, { ...settings, lang }, servers.manager.connections().length > 0)
   })
   ipcMain.handle('fs:list', (_e, p: string) => files.list(p))
   ipcMain.handle('fs:places', async () => [
@@ -120,10 +143,17 @@ function registerIpc(): void {
   ipcMain.handle('server:profiles', () => servers.profiles())
   ipcMain.handle('server:remove', (_e, id: string) => servers.remove(id))
   ipcMain.handle('server:connect', async (_e, req: ConnectRequest) => {
-    try { return { ok: true, value: await servers.connect(req) } }
+    try {
+      const value = await servers.connect(req)
+      if (win) buildMenu(win, settings, true)
+      return { ok: true, value }
+    }
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
   })
-  ipcMain.handle('server:disconnect', (_e, root: string) => servers.manager.disconnect(root))
+  ipcMain.handle('server:disconnect', async (_e, root: string) => {
+    await servers.manager.disconnect(root)
+    if (win) buildMenu(win, settings, servers.manager.connections().length > 0)
+  })
   ipcMain.handle('server:connections', () => servers.manager.connections())
   ipcMain.handle('server:key', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile'], title: settings.lang === 'ko' ? 'SSH 개인 키 선택' : 'Select SSH private key' })

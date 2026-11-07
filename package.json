@@ -1,7 +1,7 @@
 {
   "name": "chojema-filedesk",
   "productName": "Chojema FileDesk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Dual-pane file manager for Windows and macOS",
   "author": "Chulwoo Park",
   "license": "MIT",

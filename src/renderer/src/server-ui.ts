@@ -67,8 +67,7 @@ export async function connectDialog(): Promise<{ connection: ServerConnection; s
       el('div', { class: 'field-pair' }, field('server.user', username), field('server.password', secret)),
       field('server.path', dir), sshFields, field('server.side', pane),
       el('label', { class: 'check' }, save, t('server.save')),
-      el('label', { class: 'check' }, remember, t('server.remember')),
-      el('p', { class: 'hint', textContent: t('server.hint') })
+      el('label', { class: 'check' }, remember, t('server.remember'))
     )
     const pending = choose({ title: t('server.connect'), extra: form, buttons: [
       { id: 'cancel', label: t('btn.cancel') },

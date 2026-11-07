@@ -64,7 +64,8 @@ const host: PaneHost = {
   isFavorite: (p) => settings.favorites.some((f) => pathKey(f) === pathKey(p)),
   // The pane activates itself before calling these, so the commands act on it.
   openHistory: () => void run('history'),
-  openFavorites: () => void run('favorites')
+  openFavorites: () => void run('favorites'),
+  disconnect: pane => { if (!operating && !isModalOpen()) void disconnectServer(pane).catch(e => alertBox(t('dlg.error.title'), String(e))) }
 }
 
 // ---------- visited folders & favorites ----------
@@ -318,6 +319,9 @@ async function openSettings(): Promise<void> {
   for (const id of ['system', 'light', 'dark'] as ThemePref[]) {
     themeSel.append(el('option', { value: id, textContent: t(`set.theme.${id}` as MsgKey), selected: id === settings.theme }))
   }
+  const windowStart = el('select', { id: 'set-window-start' },
+    el('option', { value: 'restore', textContent: t('set.window.restore'), selected: settings.windowStart !== 'reset' }),
+    el('option', { value: 'reset', textContent: t('set.window.reset'), selected: settings.windowStart === 'reset' }))
   const hidden = el('input', { type: 'checkbox', checked: settings.showHidden, id: 'set-hidden' })
   const dot = el('input', { type: 'checkbox', checked: settings.showDotFiles, id: 'set-dot' })
   const confirmDel = el('input', { type: 'checkbox', checked: settings.confirmDelete, id: 'set-confirm' })
@@ -327,6 +331,7 @@ async function openSettings(): Promise<void> {
     {},
     el('div', { class: 'field' }, el('label', { textContent: t('set.lang') }), langSel),
     el('div', { class: 'field' }, el('label', { textContent: t('set.theme') }), themeSel),
+    el('div', { class: 'field' }, el('label', { textContent: t('set.window') , htmlFor: 'set-window-start' }), windowStart),
     el('div', { class: 'group-label', textContent: t('set.hiddenGroup') }),
     el('label', { class: 'check' }, hidden, t('set.hidden')),
     el('label', { class: 'check' }, dot, t('set.dot')),
@@ -347,6 +352,7 @@ async function openSettings(): Promise<void> {
   const langChanged = settings.lang !== langSel.value
   settings.lang = langSel.value as Lang
   settings.theme = themeSel.value as ThemePref
+  settings.windowStart = windowStart.value as Settings['windowStart']
   settings.showHidden = hidden.checked
   settings.showDotFiles = dot.checked
   settings.confirmDelete = confirmDel.checked
@@ -357,7 +363,6 @@ async function openSettings(): Promise<void> {
     await api.setMenuLang(settings.lang)
     renderFkeys()
     renderToolbar()
-    renderConnectionBar()
     await loadPlaces()
   }
   panes.left.rerender()
@@ -367,7 +372,7 @@ async function openSettings(): Promise<void> {
 
 async function showAbout(): Promise<void> {
   const version = await api.getVersion()
-  const links = el('div', { class: 'about-links' }, el('p', { textContent: t('about.links') }))
+  const links = el('div', { class: 'about-links' })
   for (const link of APP_LINKS) {
     const button = el('button', { class: 'about-link', type: 'button', textContent: link.label, title: link.url })
     button.addEventListener('click', () => { void api.openLink(link.url) })
@@ -388,26 +393,25 @@ async function connectServer(): Promise<void> {
   pane.focus()
 }
 
-async function disconnectServer(): Promise<void> {
-  if (!isRemotePath(active.path)) { await alertBox(t('server.disconnect'), t('server.none')); return }
-  const key = remotePath(active.path).key
-  await api.disconnectServer(active.path)
+async function disconnectServer(pane = active): Promise<void> {
+  let root = isRemotePath(pane.path) ? pane.path : Object.values(panes).find(p => isRemotePath(p.path))?.path
+  if (!root) {
+    const connections = await api.serverConnections()
+    if (!connections.length) return
+    const list = el('select', {}, ...connections.map(c => el('option', { value: c.root, textContent: c.name })))
+    const result = await choose({ title: t('server.disconnect'), extra: list, buttons: [
+      { id: 'cancel', label: t('btn.cancel') }, { id: 'disconnect', label: t('server.disconnect'), kind: 'primary' }
+    ], cancelId: 'cancel' })
+    if (result !== 'disconnect') return
+    root = list.value
+  }
+  const key = remotePath(root).key
+  await api.disconnectServer(root)
   const fallback = (await api.places())[0]?.path || '/'
   for (const side of ['left', 'right'] as const) {
     if (isRemotePath(panes[side].path) && remotePath(panes[side].path).key === key) await panes[side].load(lastLocal[side] || fallback)
   }
   await loadPlaces()
-}
-
-function renderConnectionBar(): void {
-  const bar = document.getElementById('connection-bar')!
-  const button = (id: string, label: MsgKey, command: string): HTMLButtonElement => {
-    const b = el('button', { id, class: 'btn', textContent: t(label), type: 'button' })
-    b.addEventListener('click', () => { void run(command) })
-    return b
-  }
-  bar.replaceChildren(button('connect-server', 'server.connect', 'connect'), button('disconnect-server', 'server.disconnect', 'disconnect'),
-    el('span', { class: 'connection-hint', textContent: 'FTP · FTPS · SFTP' }), button('check-update', 'update.check', 'checkUpdate'))
 }
 
 async function showShortcuts(): Promise<void> {
@@ -444,7 +448,7 @@ const commands: Record<string, () => void | Promise<void>> = {
   settings: openSettings,
   about: showAbout,
   connect: connectServer,
-  disconnect: disconnectServer,
+  disconnect: () => disconnectServer(),
   checkUpdate: () => showUpdate(),
   shortcuts: showShortcuts,
   focusPath: () => active.focusPath(),
@@ -586,6 +590,7 @@ function renderToolbar(): void {
   const button = (ic: IconName, label: MsgKey, cmd: string, key?: string, cls?: string): HTMLButtonElement => {
     const text = key ? `${t(label)} (${key})` : t(label)
     const b = el('button', { class: `tb-btn ${cls ?? ''}`, type: 'button', tabIndex: -1, title: text }, icon(ic, ''))
+    b.dataset.command = cmd
     b.setAttribute('aria-label', text)
     // Keep keyboard focus in the active pane.
     b.addEventListener('mousedown', (e) => {
@@ -597,9 +602,10 @@ function renderToolbar(): void {
   }
 
   const main = el('div', { class: 'tb-main' })
+  const head = el('div', { class: 'tb-head' }, button('tbSwap', 'menu.swap', 'swap', isMac ? '⌘U' : 'Ctrl+U'))
   main.append(...items.map((it) => (it ? button(...it) : el('div', { class: 'tb-sep' }))))
   const foot = el('div', { class: 'tb-foot' }, el('div', { class: 'tb-sep' }), button(...terminal), button(...copyPath), button(...copyList))
-  bar.replaceChildren(main, foot)
+  bar.replaceChildren(head, main, foot)
   updateToolbarDirection()
 }
 
@@ -649,7 +655,6 @@ async function boot(): Promise<void> {
   setLang(settings.lang)
   applyTheme()
   renderFkeys()
-  renderConnectionBar()
   initResize()
 
   for (const side of ['left', 'right'] as PaneSide[]) {

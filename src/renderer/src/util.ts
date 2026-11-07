@@ -68,6 +68,8 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 const ICONS = {
+  tbSwap: '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2 4.5h12m-3-3 3 3-3 3M14 11.5H2m3-3-3 3 3 3"/>',
+  disconnect: '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="m2 2 12 12M6.5 3.5 8 2l2.2 2.2L12 2.5M4.2 6l-2 2 1.6 1.6L2 11.5M8.8 6.2l3 3a2.2 2.2 0 0 1-3.1 3.1l-3-3M3.2 3.2l2.5 2.5"/>',
   folder:
     '<path fill="currentColor" d="M1.5 4.25c0-.97.78-1.75 1.75-1.75h3.1c.46 0 .9.18 1.23.51l.92.92c.14.14.33.22.53.22h3.72c.97 0 1.75.78 1.75 1.75v5.85c0 .97-.78 1.75-1.75 1.75H3.25c-.97 0-1.75-.78-1.75-1.75z"/>',
   file: '<path fill="none" stroke="currentColor" stroke-width="1.2" d="M4 1.6h5.2L12.4 4.8v9.1a.6.6 0 0 1-.6.6H4a.6.6 0 0 1-.6-.6V2.2a.6.6 0 0 1 .6-.6zM9 1.8v3.3h3.2"/>',

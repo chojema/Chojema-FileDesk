@@ -30,8 +30,8 @@ if (existsSync(lockUrl)) {
 
 const date = new Date().toISOString().slice(0, 10)
 const stubs = {
-  [`release-notes/v${next}.md`]: `# Chojema FileDesk v${next}\n\n출시일: ${date}\n\n[English](v${next}.en.md)\n\n## 새 기능\n\n- \n\n## 개선\n\n- \n\n## 버그 수정\n\n- \n`,
-  [`release-notes/v${next}.en.md`]: `# Chojema FileDesk v${next}\n\nRelease date: ${date}\n\n[한국어](v${next}.md)\n\n## New\n\n- \n\n## Improved\n\n- \n\n## Fixed\n\n- \n`
+  [`release-notes/v${next}.md`]: `[English](v${next}.en.md)\n\n## 변경\n\n- \n`,
+  [`release-notes/v${next}.en.md`]: `[한국어](v${next}.md)\n\n## Changes\n\n- \n`
 }
 for (const [file, body] of Object.entries(stubs)) {
   const url = new URL(`../${file}`, import.meta.url)

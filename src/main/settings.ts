@@ -23,6 +23,7 @@ export function defaultSettings(): Settings {
     showDotFiles: false,
     confirmDelete: true,
     checkUpdatesOnStart: false,
+    windowStart: 'restore',
     recentDirs: [],
     favorites: [],
     panes: {
@@ -41,6 +42,7 @@ export function loadSettings(): Settings {
     const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
     raw.recentDirs = strings(raw.recentDirs)
     raw.favorites = strings(raw.favorites)
+    raw.windowStart = raw.windowStart === 'reset' ? 'reset' : 'restore'
     return {
       ...def,
       ...raw,

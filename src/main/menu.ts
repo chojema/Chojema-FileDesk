@@ -5,7 +5,7 @@ import type { Settings } from '@shared/types'
 
 const isMac = process.platform === 'darwin'
 
-export function buildMenu(win: BrowserWindow, settings: Settings): void {
+export function buildMenu(win: BrowserWindow, settings: Settings, connected = false): void {
   const t = (k: MsgKey) => translate(settings.lang, k)
   // Keyboard handling lives in the renderer; accelerators here are shown for reference only.
   const cmd = (label: MsgKey, id: string, accelerator?: string): MenuItemConstructorOptions => ({
@@ -33,11 +33,6 @@ export function buildMenu(win: BrowserWindow, settings: Settings): void {
       ]
     })
   }
-
-  template.push({
-    label: t('menu.server'),
-    submenu: [cmd('server.connect', 'connect', 'CmdOrCtrl+K'), cmd('server.disconnect', 'disconnect')]
-  })
 
   template.push({
     label: t('menu.file'),
@@ -93,6 +88,15 @@ export function buildMenu(win: BrowserWindow, settings: Settings): void {
       { type: 'separator' },
       { role: 'togglefullscreen' },
       ...(app.isPackaged ? [] : ([{ role: 'toggleDevTools', label: t('menu.devtools') }] as MenuItemConstructorOptions[]))
+    ]
+  })
+
+  template.push({
+    id: 'server-menu',
+    label: t('menu.server'),
+    submenu: [
+      { ...cmd('server.connect', 'connect', 'CmdOrCtrl+K'), id: 'server-connect' },
+      { ...cmd('server.disconnect', 'disconnect'), id: 'server-disconnect', enabled: connected }
     ]
   })
 

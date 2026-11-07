@@ -49,6 +49,7 @@ export interface Settings {
   showDotFiles: boolean
   confirmDelete: boolean
   checkUpdatesOnStart: boolean
+  windowStart: 'restore' | 'reset'
   /** Most recently visited folders, newest first (local only). */
   recentDirs: string[]
   favorites: string[]

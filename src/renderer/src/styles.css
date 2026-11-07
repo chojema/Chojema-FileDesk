@@ -87,8 +87,10 @@ select {
   cursor: col-resize;
   user-select: none;
 }
+.tb-head { flex: none; padding-top: 2px; }
 .tb-main {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -162,23 +164,23 @@ select {
 
 .places {
   display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex: none;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 2px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
-}
-.places::-webkit-scrollbar {
-  display: none;
 }
 .place {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 8px;
+  gap: 3px;
+  min-height: 22px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 5px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -196,7 +198,9 @@ select {
   border-color: var(--border);
   color: var(--text);
 }
+.place span { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .place svg {
+  flex: none;
   width: 13px;
   height: 13px;
 }
@@ -705,10 +709,6 @@ select {
   color: var(--danger);
 }
 
-.connection-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
-.connection-bar .btn { font-size: 12px; height: 28px; }
-.connection-hint { flex: 1; color: var(--text-dim); font-size: 11px; }
-#check-update { margin-left: auto; }
 .modal:has(.server-form) { width: min(640px, calc(100vw - 32px)); }
 .modal input[type='password'], .modal input[type='number'] { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text); outline: none; }
 .modal input[type='password']:focus, .modal input[type='number']:focus { border-color: var(--accent); }
@@ -718,8 +718,6 @@ select {
 .input-action .btn { min-width: 36px; padding: 0 8px; }
 .modal .hint { font-size: 11px; margin: 4px 0 0; white-space: normal; overflow-wrap: anywhere; }
 .about-links { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.about-links p { grid-column: 1 / -1; margin-bottom: 2px; }
 .about-link { text-align: left; border: 1px solid var(--border); background: var(--surface-2); color: var(--accent); border-radius: 6px; padding: 8px; cursor: pointer; font-size: 12px; }
 .about-link:hover { border-color: var(--accent); }
 [hidden] { display: none !important; }
-@media (max-width: 850px) { .connection-hint { display: none; } .connection-bar .btn { min-width: 0; } }

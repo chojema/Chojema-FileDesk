@@ -1,4 +1,5 @@
 import type { FileEntry, PaneSide, Place, SortKey } from '@shared/types'
+import { isRemotePath, remotePath } from '@shared/remote-path'
 import { api, collator, el, formatDate, formatSize, icon, isMac, t, type IconName } from './util'
 
 const ROW_H = 26
@@ -24,6 +25,7 @@ export interface PaneHost {
   isFavorite(path: string): boolean
   openHistory(pane: Pane): void
   openFavorites(pane: Pane): void
+  disconnect(pane: Pane): void
 }
 
 export class Pane {
@@ -53,6 +55,7 @@ export class Pane {
   private hiddenBtn: HTMLButtonElement
   readonly historyBtn: HTMLButtonElement
   readonly favBtn: HTMLButtonElement
+  private disconnectBtn: HTMLButtonElement
   private fwdBtn: HTMLButtonElement
   private colsEl: HTMLElement
   readonly listEl: HTMLElement
@@ -87,6 +90,9 @@ export class Pane {
     }
     this.historyBtn = toolBtn('history-btn', () => this.host.openHistory(this))
     this.favBtn = toolBtn('fav-btn', () => this.host.openFavorites(this))
+    this.disconnectBtn = toolBtn('disconnect-btn', () => this.host.disconnect(this))
+    this.disconnectBtn.append(icon('disconnect', ''))
+    this.disconnectBtn.hidden = true
     this.historyBtn.append(icon('clock', ''))
     const pathbar = el(
       'div',
@@ -97,7 +103,8 @@ export class Pane {
       this.pathInput,
       this.historyBtn,
       this.favBtn,
-      this.hiddenBtn
+      this.hiddenBtn,
+      this.disconnectBtn
     )
     this.colsEl = el('div', { class: 'cols' })
     this.innerEl = el('div', { class: 'list-inner' })
@@ -152,6 +159,7 @@ export class Pane {
   setPlaces(list: Place[]): void {
     this.placesList = list
     this.renderPlaces()
+    this.refreshTools()
   }
 
   async load(path: string, opts: { push?: boolean; focusName?: string; keepCursor?: boolean; silent?: boolean } = {}): Promise<boolean> {
@@ -507,6 +515,10 @@ export class Pane {
     this.favBtn.classList.toggle('on', fav)
     this.favBtn.title = `${t('tb.favorites')} (${isMac ? '⌘D' : 'Ctrl+D'})`
     this.historyBtn.title = `${t('tb.history')} (${isMac ? '⌥↓' : 'Alt+↓'})`
+    this.disconnectBtn.title = t('server.disconnect')
+    this.disconnectBtn.setAttribute('aria-label', t('server.disconnect'))
+    this.disconnectBtn.hidden = !isRemotePath(this.path) || !this.placesList.some(p =>
+      p.kind === 'server' && remotePath(p.path).key === remotePath(this.path).key)
   }
 
   private renderHiddenBtn(): void {
