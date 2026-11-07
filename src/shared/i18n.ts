@@ -175,9 +175,6 @@ const ko = {
   'fx.pasteMany': '{n}개 항목 붙여넣기',
   'fx.copySuffix': '복사본',
   'fx.archive': '아카이브',
-  'ime.ko': '한',
-  'ime.en': '영',
-  'ime.title': '키보드 입력 모드',
   'shortcuts.body':
     'Tab  패널 전환\nEnter  열기\nBackspace  상위 폴더\nSpace / Insert  선택 토글\n{mod}+A  모두 선택\nF2  이름 바꾸기\nF5  복사 · F6  이동\nF7  새 폴더 · F8 / Delete  삭제\n{mod}+R  새로 고침\n{mod}+L  경로 입력\nAlt+↓  방문했던 폴더\n{mod}+D  즐겨찾기 폴더\n{mod}+Shift+C  경로 복사\n{mod}+.  숨김 항목 모두 표시/감추기\n{mod}+U  좌우 패널 바꾸기\n{mod}+=  반대쪽을 같은 폴더로'
 }
@@ -360,9 +357,6 @@ const en: Dict = {
   'fx.pasteMany': 'Paste {n} Items',
   'fx.copySuffix': 'copy',
   'fx.archive': 'Archive',
-  'ime.ko': 'KO',
-  'ime.en': 'EN',
-  'ime.title': 'Keyboard input mode',
   'shortcuts.body':
     'Tab  Switch pane\nEnter  Open\nBackspace  Parent folder\nSpace / Insert  Toggle selection\n{mod}+A  Select all\nF2  Rename\nF5  Copy · F6  Move\nF7  New folder · F8 / Delete  Delete\n{mod}+R  Refresh\n{mod}+L  Edit path\nAlt+↓  Visited folders\n{mod}+D  Favorite folders\n{mod}+Shift+C  Copy path\n{mod}+.  Show/hide all hidden items\n{mod}+U  Swap panes\n{mod}+=  Same folder in other pane'
 }

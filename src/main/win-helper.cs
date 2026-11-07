@@ -1,10 +1,9 @@
-// Windows helper run by PowerShell (Add-Type). Shows the real Explorer context menu and reports the IME mode.
+// Windows helper run by PowerShell (Add-Type). Shows the real Explorer context menu.
 // Kept in a .cs file so it can be compile-checked; src/main/win-helper.ts embeds it at build time.
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using System.Windows.Forms;
 
 public static class FdHelper
@@ -97,12 +96,6 @@ public static class FdHelper
     static extern bool AttachThreadInput(uint attach, uint attachTo, bool fAttach);
     [DllImport("user32.dll")]
     static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
-    [DllImport("user32.dll")]
-    static extern IntPtr GetKeyboardLayout(uint thread);
-    [DllImport("imm32.dll")]
-    static extern IntPtr ImmGetDefaultIMEWnd(IntPtr hwnd);
-    [DllImport("user32.dll")]
-    static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
 
     static readonly Guid IID_IShellFolder = new Guid("000214E6-0000-0000-C000-000000000046");
     static readonly Guid IID_IContextMenu = new Guid("000214E4-0000-0000-C000-000000000046");
@@ -232,41 +225,9 @@ public static class FdHelper
     }
 
     static readonly object outLock = new object();
-    static string lastIme = "";
-    static System.Threading.Timer imeTimer;
 
     public static void Write(string line)
     {
         lock (outLock) { Console.Out.WriteLine(line); Console.Out.Flush(); }
-    }
-
-    /// Reports the keyboard mode of the foreground window: ko (Korean input), en (Korean IME in English mode or
-    /// an English layout) or the layout's language id in hex.
-    public static void StartIme()
-    {
-        imeTimer = new System.Threading.Timer(_ =>
-        {
-            try
-            {
-                IntPtr fg = GetForegroundWindow();
-                if (fg == IntPtr.Zero) return;
-                uint pid;
-                uint thread = GetWindowThreadProcessId(fg, out pid);
-                int lang = (int)((long)GetKeyboardLayout(thread) & 0xFFFF);
-                string mode;
-                if (lang == 0x0412)
-                {
-                    IntPtr ime = ImmGetDefaultIMEWnd(fg), conv;
-                    // WM_IME_CONTROL / IMC_GETCONVERSIONMODE; IME_CMODE_NATIVE marks Hangul input.
-                    if (ime == IntPtr.Zero || SendMessageTimeout(ime, 0x283, (IntPtr)1, IntPtr.Zero, 2, 200, out conv) == IntPtr.Zero) return;
-                    mode = ((long)conv & 1) != 0 ? "ko" : "en";
-                }
-                else mode = (lang & 0x3FF) == 0x09 ? "en" : lang.ToString("x4");
-                if (mode == lastIme) return;
-                lastIme = mode;
-                Write("{\"ime\":\"" + mode + "\"}");
-            }
-            catch { }
-        }, null, 0, 250);
     }
 }

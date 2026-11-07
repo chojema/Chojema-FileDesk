@@ -1,39 +1,11 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
-import { createInterface } from 'node:readline'
 import { translate, type MsgKey } from '@shared/i18n'
 import type { ContextItem, Lang, ShellMenuResult } from '@shared/types'
 
-// macOS: live input-source tracking and a Finder-style context menu.
-
-const IME_SCRIPT = `ObjC.import('Carbon'); ObjC.import('Foundation')
-let last = ''
-while (true) {
-  $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.25))
-  const id = ObjC.castRefToObject($.TISGetInputSourceProperty($.TISCopyCurrentKeyboardInputSource(), $.kTISPropertyInputSourceID)).js
-  if (id !== last) { last = id; console.log(id) }
-}`
-
-let imeProc: ChildProcess | undefined
-
-export function startMacIme(onIme: (mode: string) => void): void {
-  if (process.platform !== 'darwin' || imeProc) return
-  const proc = spawn('osascript', ['-l', 'JavaScript', '-e', IME_SCRIPT], { stdio: ['ignore', 'ignore', 'pipe'] })
-  imeProc = proc
-  // JXA console.log writes to stderr.
-  createInterface({ input: proc.stderr! }).on('line', (id) => {
-    const s = id.trim()
-    onIme(/korean/i.test(s) ? 'ko' : /\.keylayout\./.test(s) ? 'en' : s.split('.').pop()?.toLowerCase() || '')
-  })
-  proc.on('exit', () => { imeProc = undefined })
-}
-
-export function stopMacIme(): void {
-  imeProc?.kill()
-  imeProc = undefined
-}
+// macOS: Finder-style context menu.
 
 const run = (cmd: string, args: string[], cwd?: string) => new Promise<string>((resolve, reject) => {
   execFile(cmd, args, { cwd, maxBuffer: 1 << 20 }, (err, stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve(stdout)))

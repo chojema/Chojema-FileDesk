@@ -33,12 +33,6 @@ const api: FileDeskApi = {
   pathForFile: (file) => webUtils.getPathForFile(file),
   startDrag: (paths) => ipcRenderer.send('drag:start', paths),
   contextMenu: (req) => ipcRenderer.invoke('menu:context', req),
-  getIme: () => ipcRenderer.invoke('ime:get'),
-  onIme: (cb) => {
-    const h = (_e: IpcRendererEvent, mode: string) => cb(mode)
-    ipcRenderer.on('ime', h)
-    return () => ipcRenderer.removeListener('ime', h)
-  },
   onAppError: (cb) => {
     const h = (_e: IpcRendererEvent, message: string) => cb(message)
     ipcRenderer.on('app:error', h)

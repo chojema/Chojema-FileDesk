@@ -181,9 +181,6 @@ export interface FileDeskApi {
   startDrag(paths: string[]): void
   /** Shows a native context menu and resolves with the chosen item id. */
   contextMenu(req: ShellMenuRequest): Promise<ShellMenuResult>
-  /** Keyboard input mode: 'ko', 'en', another short code, or '' when unknown. */
-  getIme(): Promise<string>
-  onIme(cb: (mode: string) => void): () => void
   onAppError(cb: (message: string) => void): () => void
   /** System file-type icon as a data URL ('' when unavailable). */
   fileIcon(path: string): Promise<string>

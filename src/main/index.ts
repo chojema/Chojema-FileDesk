@@ -14,7 +14,7 @@ import { APP_LINKS } from '@shared/links'
 import { isRemotePath } from '@shared/remote-path'
 import type { ConnectRequest, ContextItem, ShellMenuRequest, ShellMenuResult } from '@shared/types'
 import { showWinMenu, startWinHelper, stopWinHelper, winHelperReady } from './win-helper'
-import { showMacMenu, startMacIme, stopMacIme } from './mac-shell'
+import { showMacMenu } from './mac-shell'
 import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
 import dragIconPath from '../../resources/icon-256.png?asset'
 
@@ -69,8 +69,7 @@ function createWindow(): void {
   window.once('ready-to-show', () => {
     if (state.maximized) window.maximize()
     window.show()
-    startWinHelper(setIme)
-    startMacIme(setIme)
+    startWinHelper()
   })
 
   // Never navigate away from the app or open new windows.
@@ -217,7 +216,6 @@ function registerIpc(): void {
     }
     return appMenu(owner, req.items)
   })
-  ipcMain.handle('ime:get', () => imeMode)
   // Drag local files out of the window into Finder/Explorer or another app.
   ipcMain.on('drag:start', (e, paths: unknown) => {
     if (!Array.isArray(paths) || !paths.length || paths.length > 10000) return
@@ -249,16 +247,9 @@ function appMenu(owner: BrowserWindow, items: ContextItem[]): Promise<ShellMenuR
   })
 }
 
-let imeMode = ''
-function setIme(mode: string): void {
-  imeMode = mode
-  win?.webContents.send('ime', mode)
-}
-
 app.on('before-quit', () => {
   void servers.manager.closeAll()
   stopWinHelper()
-  stopMacIme()
 })
 
 const gotLock = app.requestSingleInstanceLock()

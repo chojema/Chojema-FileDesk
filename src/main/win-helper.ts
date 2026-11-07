@@ -5,13 +5,12 @@ import path from 'node:path'
 import { createInterface } from 'node:readline'
 import source from './win-helper.cs?raw'
 
-// One hidden PowerShell process hosts the Explorer context menu and IME polling (Windows only).
+// One hidden PowerShell process hosts the Explorer context menu (Windows only).
 const SCRIPT = `$ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'helper.cs')))
 [FdHelper]::Write('{"ready":true}')
-[FdHelper]::StartIme()
 while ($true) {
   $line = [Console]::In.ReadLine()
   if ($null -eq $line) { break }
@@ -34,7 +33,7 @@ let ready = false
 let serial = 0
 const pending = new Map<number, { resolve: (v: string) => void; reject: (e: Error) => void }>()
 
-export function startWinHelper(onIme: (mode: string) => void): void {
+export function startWinHelper(): void {
   if (process.platform !== 'win32' || child) return
   try {
     const dir = path.join(app.getPath('temp'), `filedesk-helper-${app.getVersion()}`)
@@ -49,10 +48,9 @@ export function startWinHelper(onIme: (mode: string) => void): void {
   const proc = child
   proc.stdin.setDefaultEncoding('utf8')
   createInterface({ input: proc.stdout }).on('line', (line) => {
-    let msg: { ready?: boolean; ime?: string; id?: number; result?: string; error?: string }
+    let msg: { ready?: boolean; id?: number; result?: string; error?: string }
     try { msg = JSON.parse(line.replace(/^﻿/, '')) } catch { return }
     if (msg.ready) ready = true
-    if (typeof msg.ime === 'string') onIme(msg.ime)
     if (typeof msg.id === 'number') {
       const request = pending.get(msg.id)
       pending.delete(msg.id)

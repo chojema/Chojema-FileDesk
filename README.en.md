@@ -33,7 +33,7 @@ On macOS, copy the app from the DMG to Applications. If the first launch is bloc
 | `Ctrl/⌘+.` | Toggle hidden items |
 | `F10` | Settings |
 
-On macOS, hold `fn` if function keys do not respond. The function key bar can be turned off in Settings. The date (weekday), time and keyboard input mode appear at the top right.
+On macOS, hold `fn` if function keys do not respond. The function key bar can be turned off in Settings.
 
 ## Mouse
 

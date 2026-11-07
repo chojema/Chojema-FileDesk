@@ -150,31 +150,6 @@ async function guarded(fn: () => Promise<void>): Promise<void> {
   if (!isModalOpen()) active.focus()
 }
 
-// ---------- clock and keyboard input mode ----------
-
-let imeMode = ''
-function renderIme(): void {
-  const node = document.getElementById('ime')!
-  node.hidden = !imeMode
-  node.className = `ime ${imeMode}`
-  node.textContent = imeMode === 'ko' ? t('ime.ko') : imeMode === 'en' ? t('ime.en') : imeMode.toUpperCase()
-  node.title = t('ime.title')
-}
-
-function startClock(): void {
-  const node = document.getElementById('clock')!
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const tick = () => {
-    const d = new Date()
-    const day = new Intl.DateTimeFormat(settings.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).format(d)
-    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    node.textContent = `${date}${settings.lang === 'ko' ? '' : ' '}(${day}) ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-    // Align the next update with the start of the next second.
-    window.setTimeout(tick, 1000 - (Date.now() % 1000) + 5)
-  }
-  tick()
-}
-
 // ---------- drag and drop ----------
 
 const DRAG_TYPE = 'application/x-filedesk-paths'
@@ -526,7 +501,6 @@ async function openSettings(): Promise<void> {
     await api.setMenuLang(settings.lang)
     renderFkeys()
     renderToolbar()
-    renderIme()
     await loadPlaces()
   }
   panes.left.rerender()
@@ -832,10 +806,6 @@ async function boot(): Promise<void> {
   applyTheme()
   renderFkeys()
   applyFkeys()
-  startClock()
-  api.onIme((mode) => { imeMode = mode; renderIme() })
-  imeMode = await api.getIme()
-  renderIme()
   api.onAppError((message) => void alertBox(t('dlg.error.title'), message))
   initResize()
 
