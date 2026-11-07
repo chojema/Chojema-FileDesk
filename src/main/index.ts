@@ -4,7 +4,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { translate } from '@shared/i18n'
 import type { Lang, Settings, TransferRequest } from '@shared/types'
 import * as fsops from './fsops'
-import { loadSettings, saveSettings } from './settings'
+import { loadSettings, normalizeSettings, saveSettings } from './settings'
 import { buildMenu } from './menu'
 import { openTerminal } from './terminal'
 import { FileService } from './file-service'
@@ -103,7 +103,8 @@ function registerIpc(): void {
 
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('settings:get', () => settings)
-  ipcMain.handle('settings:save', async (_e, s: Settings) => {
+  ipcMain.handle('settings:save', async (_e, value: Settings) => {
+    const s = normalizeSettings(value)
     settings = s
     nativeTheme.themeSource = s.theme
     if (win) buildMenu(win, s, servers.manager.connections().length > 0)

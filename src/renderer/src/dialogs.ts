@@ -176,11 +176,32 @@ export function popup(anchor: HTMLElement, title: string, build: () => PopupItem
   let focus = -1
   let rows: HTMLElement[] = []
 
-  const close = () => {
+  let closed = false
+  const close = (restoreFocus = true) => {
+    if (closed) return
+    closed = true
+    document.removeEventListener('mousedown', outside, true)
+    window.removeEventListener('blur', onBlur)
+    window.removeEventListener('resize', onBlur)
     backdrop.remove()
     openCount--
-    prevFocus?.focus()
+    if (restoreFocus) prevFocus?.focus()
   }
+  // Any click outside the list closes it and still reaches what was clicked;
+  // a click on the button that opened it only closes it.
+  const outside = (e: MouseEvent) => {
+    const target = e.target as Node
+    if (menu.contains(target)) return
+    if (anchor.contains(target)) {
+      e.preventDefault()
+      e.stopPropagation()
+      const swallow = (ev: MouseEvent) => { ev.preventDefault(); ev.stopPropagation() }
+      document.addEventListener('click', swallow, { capture: true, once: true })
+      window.setTimeout(() => document.removeEventListener('click', swallow, true), 600)
+    }
+    close(false)
+  }
+  const onBlur = () => close(false)
 
   const selectable = (i: number) => !!items[i] && !items[i].disabled
   const setFocus = (i: number) => {
@@ -238,12 +259,6 @@ export function popup(anchor: HTMLElement, title: string, build: () => PopupItem
     setFocus(want)
   }
 
-  backdrop.addEventListener('mousedown', (e) => {
-    if (e.target === backdrop) {
-      e.preventDefault()
-      close()
-    }
-  })
   backdrop.addEventListener('keydown', (e) => {
     e.stopPropagation()
     const handled = ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Delete', 'Home', 'End', 'Tab'].includes(e.key)
@@ -259,6 +274,9 @@ export function popup(anchor: HTMLElement, title: string, build: () => PopupItem
 
   root().append(backdrop)
   openCount++
+  document.addEventListener('mousedown', outside, true)
+  window.addEventListener('blur', onBlur)
+  window.addEventListener('resize', onBlur)
   render()
 
   // Position: below the anchor, right edges aligned, kept inside the window.

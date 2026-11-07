@@ -265,7 +265,7 @@ select {
 .cols,
 .row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 64px 88px 132px;
+  grid-template-columns: minmax(80px, 1fr) var(--col-ext, 64px) var(--col-size, 88px) var(--col-date, 132px);
   align-items: center;
   column-gap: 8px;
   padding: 0 10px;
@@ -278,6 +278,7 @@ select {
   user-select: none;
 }
 .cols > div {
+  position: relative;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -285,6 +286,28 @@ select {
 }
 .cols > div:hover {
   color: var(--text);
+}
+.col-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7px;
+  cursor: col-resize;
+}
+.col-resize::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 1px;
+  background: var(--border);
+}
+.col-resize:hover::after,
+.col-resize.active::after {
+  width: 2px;
+  background: var(--accent);
 }
 .cols .sorted {
   color: var(--accent);
@@ -588,7 +611,7 @@ select {
 @media (max-width: 900px) {
   .cols,
   .row {
-    grid-template-columns: minmax(100px, 1fr) 76px;
+    grid-template-columns: minmax(80px, 1fr) var(--col-size, 88px);
   }
   .cols > :nth-child(2),
   .row > :nth-child(2) {
@@ -636,8 +659,10 @@ select {
   position: fixed;
   inset: 0;
   z-index: 15;
+  pointer-events: none;
 }
 .popup {
+  pointer-events: auto;
   position: fixed;
   min-width: 260px;
   max-width: min(520px, calc(100vw - 16px));

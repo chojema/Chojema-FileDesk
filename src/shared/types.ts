@@ -42,6 +42,12 @@ export interface PaneState {
   sortAsc: boolean
 }
 
+export interface ColumnWidths {
+  ext: number
+  size: number
+  mtime: number
+}
+
 export interface Settings {
   lang: Lang
   theme: ThemePref
@@ -51,6 +57,8 @@ export interface Settings {
   checkUpdatesOnStart: boolean
   windowStart: 'restore' | 'reset'
   showFkeys: boolean
+  /** File list column widths in px, shared by both panes; the name column takes the rest. */
+  columns: ColumnWidths
   /** Most recently visited folders, newest first (local only). */
   recentDirs: string[]
   favorites: string[]

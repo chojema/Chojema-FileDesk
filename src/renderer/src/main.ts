@@ -1,6 +1,6 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Settings, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
@@ -78,7 +78,23 @@ const host: PaneHost = {
     e.preventDefault()
     api.startDrag(paths)
   },
-  contextMenu: (pane, onRow, extended) => void showContextMenu(pane, onRow, extended)
+  contextMenu: (pane, onRow, extended) => void showContextMenu(pane, onRow, extended),
+  columnWidth: (key) => settings.columns[key],
+  resizeColumn(key, width, done) {
+    // Both panes share the widths; keep at least 80px for names in the narrower pane.
+    const others = (Object.keys(settings.columns) as (keyof ColumnWidths)[]).filter((k) => k !== key).reduce((n, k) => n + settings.columns[k], 0)
+    const room = Math.min(panes.left.columnsWidth(), panes.right.columnsWidth()) - 20 - 3 * 8 - others - 80
+    settings.columns[key] = Math.round(Math.max(36, Math.min(600, room, width)))
+    applyColumns()
+    if (done) persist()
+  }
+}
+
+function applyColumns(): void {
+  const style = document.documentElement.style
+  style.setProperty('--col-ext', `${settings.columns.ext}px`)
+  style.setProperty('--col-size', `${settings.columns.size}px`)
+  style.setProperty('--col-date', `${settings.columns.mtime}px`)
 }
 
 // ---------- context menu ----------
@@ -806,6 +822,7 @@ async function boot(): Promise<void> {
   applyTheme()
   renderFkeys()
   applyFkeys()
+  applyColumns()
   api.onAppError((message) => void alertBox(t('dlg.error.title'), message))
   initResize()
 

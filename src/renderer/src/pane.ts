@@ -1,4 +1,4 @@
-import type { FileEntry, PaneSide, Place, SortKey } from '@shared/types'
+import type { ColumnWidths, FileEntry, PaneSide, Place, SortKey } from '@shared/types'
 import { isRemotePath, remotePath } from '@shared/remote-path'
 import { api, collator, el, formatDate, formatSize, icon, isMac, t, type IconName } from './util'
 
@@ -39,6 +39,9 @@ export interface PaneHost {
   startDrag(pane: Pane, items: FileEntry[], e: DragEvent): void
   /** Right-click in the list; onRow is false for empty space and "..". */
   contextMenu(pane: Pane, onRow: boolean, extended: boolean): void
+  columnWidth(key: keyof ColumnWidths): number
+  /** Live resize of a shared column; done is true when the drag ends. */
+  resizeColumn(key: keyof ColumnWidths, width: number, done: boolean): void
 }
 
 export class Pane {
@@ -611,6 +614,7 @@ export class Pane {
           class: `${cls} ${sorted ? 'sorted' : ''}`,
           textContent: sorted ? `${label} ${this.sortAsc ? '↑' : '↓'}` : label
         })
+        if (key !== 'name') c.append(this.resizeHandle(key))
         c.addEventListener('click', () => {
           if (this.sortKey === key) this.sortAsc = !this.sortAsc
           else {
@@ -629,6 +633,38 @@ export class Pane {
         return c
       })
     )
+  }
+
+  /** Width the header row offers to columns (used to keep the name column usable). */
+  columnsWidth(): number {
+    return this.colsEl.clientWidth
+  }
+
+  /** Drag handle on a column's left edge: dragging it moves the divider and resizes that column. */
+  private resizeHandle(key: keyof ColumnWidths): HTMLElement {
+    const handle = el('span', { class: 'col-resize' })
+    handle.addEventListener('click', (e) => e.stopPropagation())
+    handle.addEventListener('dblclick', (e) => e.stopPropagation())
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      const startX = e.clientX
+      const start = this.host.columnWidth(key)
+      handle.classList.add('active')
+      document.body.style.cursor = 'col-resize'
+      const move = (ev: MouseEvent) => this.host.resizeColumn(key, start - (ev.clientX - startX), false)
+      const up = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', up)
+        handle.classList.remove('active')
+        document.body.style.cursor = ''
+        this.host.resizeColumn(key, start - (ev.clientX - startX), true)
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', up)
+    })
+    return handle
   }
 
   private renderPlaces(): void {
