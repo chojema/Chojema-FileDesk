@@ -257,13 +257,16 @@ function registerIpc(): void {
     }
     if (local && process.platform === 'win32' && winHelperReady()) {
       try {
+        const handle = owner.getNativeWindowHandle()
         const sep = (it: ContextItem) => it?.type === 'separator'
         const result = await showWinMenu({
           paths: req.paths,
           folder: req.folder,
           ids: req.extras.map((it) => (sep(it) ? '-' : String(it.id))),
           labels: req.extras.map((it) => (sep(it) ? '' : `${String(it.label)}${it.accelerator ? `\t${it.accelerator.replace('CmdOrCtrl', 'Ctrl')}` : ''}`)),
-          extended: !!req.extended
+          extended: !!req.extended,
+          // A decimal string keeps the native pointer exact across JSON on 32/64-bit hosts.
+          owner: (handle.length >= 8 ? handle.readBigInt64LE(0) : BigInt(handle.readInt32LE(0))).toString()
         })
         if (result.startsWith('app:')) return { id: result.slice(4) }
         return result === 'shell' ? { changed: true } : {}

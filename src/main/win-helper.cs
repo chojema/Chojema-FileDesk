@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
 public static class FdHelper
@@ -85,7 +86,7 @@ public static class FdHelper
     [DllImport("user32.dll")]
     static extern bool GetCursorPos(out POINT pt);
     [DllImport("user32.dll")]
-    static extern IntPtr GetForegroundWindow();
+    static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
     static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
@@ -122,17 +123,81 @@ public static class FdHelper
 
     static MenuHost host;
 
+    /// Keeps shell/clipboard callbacks on the PowerShell STA, pumping messages even while
+    /// stdin is idle. Only the background reader blocks; it never invokes PowerShell or COM.
+    public static void Run(Action<string> dispatch)
+    {
+        var lines = new Queue<string>();
+        using (var dispatcher = new Control())
+        using (var context = new ApplicationContext())
+        {
+            // BeginInvoke requires a handle created on the UI/STA thread.
+            IntPtr handle = dispatcher.Handle;
+            bool dispatching = false;
+            Action drain = delegate
+            {
+                // Shell verbs may run nested message loops (e.g. a modal property sheet).
+                // A queued request must not reenter Show and overwrite its active menu.
+                if (dispatching) return;
+                dispatching = true;
+                try
+                {
+                    while (true)
+                    {
+                        string line;
+                        lock (lines)
+                        {
+                            if (lines.Count == 0) return;
+                            line = lines.Dequeue();
+                        }
+                        if (line == null) { context.ExitThread(); return; }
+                        dispatch(line);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine(e);
+                    context.ExitThread();
+                }
+                finally { dispatching = false; }
+            };
+            Action<string> enqueue = delegate(string line)
+            {
+                lock (lines) { lines.Enqueue(line); }
+                try { dispatcher.BeginInvoke(drain); }
+                catch (InvalidOperationException) { /* The UI thread has exited. */ }
+            };
+            var reader = new Thread(delegate()
+            {
+                try
+                {
+                    string line;
+                    while ((line = Console.In.ReadLine()) != null) enqueue(line);
+                }
+                catch (Exception e) { Console.Error.WriteLine(e); }
+                finally { enqueue(null); }
+            });
+            reader.IsBackground = true;
+            reader.Start();
+            Write("{\"ready\":true}");
+            Application.Run(context);
+        }
+    }
+
     /// Shows app items followed by the Explorer menu for paths (or for folder's background when paths is empty).
     /// Returns "app:<id>", "shell" when a shell command ran, or "none".
-    public static string Show(string[] paths, string folder, string[] ids, string[] labels, bool extended)
+    public static string Show(string[] paths, string folder, string[] ids, string[] labels, bool extended, long ownerValue)
     {
+        // Use the requesting FileDesk window, not whichever app happens to be foreground
+        // when this queued request is processed.
+        IntPtr owner = IntPtr.Size == 8 ? new IntPtr(ownerValue) : new IntPtr(unchecked((int)ownerValue));
+        if (owner == IntPtr.Zero || !IsWindow(owner)) return "none";
         if (host == null) host = new MenuHost();
         var pidls = new List<IntPtr>();
         IntPtr hmenu = CreatePopupMenu();
         object menuObject = null;
-        IntPtr fg = GetForegroundWindow();
         uint pid;
-        uint fgThread = GetWindowThreadProcessId(fg, out pid);
+        uint fgThread = GetWindowThreadProcessId(owner, out pid);
         uint self = GetCurrentThreadId();
         bool attached = false;
         try
@@ -142,7 +207,7 @@ public static class FdHelper
                 if (ids[i] == "-") AppendMenuW(hmenu, MF_SEPARATOR, UIntPtr.Zero, null);
                 else AppendMenuW(hmenu, MF_STRING, (UIntPtr)(uint)(i + 1), labels[i]);
             }
-            IContextMenu menu = GetMenu(paths ?? new string[0], folder, pidls, out menuObject);
+            IContextMenu menu = GetMenu(paths ?? new string[0], folder, owner, pidls, out menuObject);
             if (menu != null)
             {
                 if (ids.Length > 0) AppendMenuW(hmenu, MF_SEPARATOR, UIntPtr.Zero, null);
@@ -152,16 +217,25 @@ public static class FdHelper
             POINT pt;
             GetCursorPos(out pt);
             if (fgThread != 0 && fgThread != self) attached = AttachThreadInput(self, fgThread, true);
-            SetForegroundWindow(host.Handle);
-            uint cmd = TrackPopupMenuEx(hmenu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.X, pt.Y, host.Handle, IntPtr.Zero);
-            PostMessage(host.Handle, 0, IntPtr.Zero, IntPtr.Zero);
-            if (fg != IntPtr.Zero) SetForegroundWindow(fg);
+            uint cmd;
+            try
+            {
+                SetForegroundWindow(host.Handle);
+                cmd = TrackPopupMenuEx(hmenu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.X, pt.Y, host.Handle, IntPtr.Zero);
+                PostMessage(host.Handle, 0, IntPtr.Zero, IntPtr.Zero);
+            }
+            finally
+            {
+                // Never keep FileDesk's input queue attached while a shell verb opens UI.
+                if (attached) { AttachThreadInput(self, fgThread, false); attached = false; }
+                if (IsWindow(owner)) SetForegroundWindow(owner);
+            }
             if (cmd == 0) return "none";
             if (cmd < SHELL_FIRST) return "app:" + ids[cmd - 1];
             var info = new CMINVOKECOMMANDINFOEX();
             info.cbSize = Marshal.SizeOf(typeof(CMINVOKECOMMANDINFOEX));
             info.fMask = 0x4000 | 0x20000000; // CMIC_MASK_UNICODE | CMIC_MASK_PTINVOKE
-            info.hwnd = fg;
+            info.hwnd = owner;
             info.lpVerb = (IntPtr)(cmd - SHELL_FIRST);
             info.lpVerbW = (IntPtr)(cmd - SHELL_FIRST);
             info.lpDirectory = folder;
@@ -182,7 +256,7 @@ public static class FdHelper
         }
     }
 
-    static IContextMenu GetMenu(string[] paths, string folder, List<IntPtr> pidls, out object menuObject)
+    static IContextMenu GetMenu(string[] paths, string folder, IntPtr owner, List<IntPtr> pidls, out object menuObject)
     {
         menuObject = null;
         Guid iidFolder = IID_IShellFolder, iidMenu = IID_IContextMenu;
@@ -199,7 +273,7 @@ public static class FdHelper
             if (desktop.BindToObject(pidl, IntPtr.Zero, ref iidFolder, out ppv) != 0) return null;
             var shellFolder = (IShellFolder)Marshal.GetObjectForIUnknown(ppv);
             Marshal.Release(ppv);
-            if (shellFolder.CreateViewObject(IntPtr.Zero, ref iidMenu, out ppv) != 0) return null;
+            if (shellFolder.CreateViewObject(owner, ref iidMenu, out ppv) != 0) return null;
         }
         else
         {
@@ -217,7 +291,7 @@ public static class FdHelper
                 Marshal.Release(parentPtr);
                 children[i] = last;
             }
-            if (parent.GetUIObjectOf(IntPtr.Zero, (uint)children.Length, children, ref iidMenu, IntPtr.Zero, out ppv) != 0) return null;
+            if (parent.GetUIObjectOf(owner, (uint)children.Length, children, ref iidMenu, IntPtr.Zero, out ppv) != 0) return null;
         }
         menuObject = Marshal.GetObjectForIUnknown(ppv);
         Marshal.Release(ppv);

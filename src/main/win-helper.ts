@@ -4,50 +4,10 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import source from './win-helper.cs?raw'
+import script from './win-helper.ps1?raw'
 
 // One hidden PowerShell process hosts the Explorer context menu (Windows only).
-const SCRIPT = `$ErrorActionPreference = 'Stop'
-[Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
-Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'helper.cs')))
-[FdHelper]::Write('{"ready":true}')
-while ($true) {
-  $line = [Console]::In.ReadLine()
-  if ($null -eq $line) { break }
-  $id = 0
-  try {
-    $r = ConvertFrom-Json $line
-    $id = $r.id
-    if ($r.op -eq 'clipSet') {
-      if (@($r.paths).Count -eq 0) { [Windows.Forms.Clipboard]::Clear() }
-      else {
-        $files = New-Object System.Collections.Specialized.StringCollection
-        foreach ($p in @($r.paths)) { [void]$files.Add([string]$p) }
-        $data = New-Object Windows.Forms.DataObject
-        $data.SetFileDropList($files)
-        $effect = if ($r.cut) { 2 } else { 5 }
-        $data.SetData('Preferred DropEffect', (New-Object IO.MemoryStream (,[byte[]]@($effect, 0, 0, 0))))
-        [Windows.Forms.Clipboard]::SetDataObject($data, $true)
-      }
-      $result = 'ok'
-    } elseif ($r.op -eq 'clipGet') {
-      $list = @()
-      if ([Windows.Forms.Clipboard]::ContainsFileDropList()) { $list = @([Windows.Forms.Clipboard]::GetFileDropList()) }
-      $cut = $false
-      $effect = [Windows.Forms.Clipboard]::GetData('Preferred DropEffect')
-      if ($effect -is [IO.MemoryStream]) { $b = $effect.ToArray(); $cut = $b.Length -gt 0 -and ($b[0] -band 2) -ne 0 }
-      $result = ConvertTo-Json -Compress @{ paths = [string[]]$list; cut = $cut }
-    } else {
-      $result = [FdHelper]::Show([string[]]@($r.paths), [string]$r.folder, [string[]]@($r.ids), [string[]]@($r.labels), [bool]$r.extended)
-    }
-    [FdHelper]::Write((ConvertTo-Json -Compress @{ id = $id; result = $result }))
-  } catch {
-    [FdHelper]::Write((ConvertTo-Json -Compress @{ id = $id; error = $_.Exception.Message }))
-  }
-}
-`
-
-export interface WinMenuRequest { paths: string[]; folder: string; ids: string[]; labels: string[]; extended: boolean }
+export interface WinMenuRequest { paths: string[]; folder: string; ids: string[]; labels: string[]; extended: boolean; owner: string }
 
 let child: ChildProcessWithoutNullStreams | undefined
 let ready = false
@@ -60,7 +20,7 @@ export function startWinHelper(): void {
     const dir = path.join(app.getPath('temp'), `filedesk-helper-${app.getVersion()}`)
     mkdirSync(dir, { recursive: true })
     writeFileSync(path.join(dir, 'helper.cs'), source)
-    writeFileSync(path.join(dir, 'helper.ps1'), '﻿' + SCRIPT)
+    writeFileSync(path.join(dir, 'helper.ps1'), '﻿' + script)
     child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Sta', '-File', path.join(dir, 'helper.ps1')], { windowsHide: true })
   } catch (e) {
     console.warn('Windows helper unavailable:', e)
