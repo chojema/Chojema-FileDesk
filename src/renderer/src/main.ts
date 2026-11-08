@@ -78,6 +78,7 @@ const host: PaneHost = {
     e.preventDefault()
     api.startDrag(paths)
   },
+  renameEntry: (pane, entry, name) => renameEntry(pane, entry, name),
   contextMenu: (pane, onRow, extended) => void showContextMenu(pane, onRow, extended),
   columnWidth: (key) => settings.columns[key],
   resizeColumn(key, width, done) {
@@ -394,19 +395,15 @@ async function makeDir(): Promise<void> {
   if (other(active).path === active.path) await other(active).refresh()
 }
 
-async function renameCurrent(): Promise<void> {
-  const entry = active.currentEntry()
-  if (!entry) return
-  const name = await prompt({ title: t('dlg.rename.title'), label: t('dlg.rename.msg'), value: entry.name, selectStem: !entry.isDir })
-  if (!name || name === entry.name) return
+async function renameEntry(pane: Pane, entry: FileEntry, name: string): Promise<void> {
   const res = await api.rename(entry.path, name)
   if (!res.ok) {
     const msg = res.error === 'invalid-name' ? t('err.invalidName') : res.error === 'EEXIST' ? t('dlg.conflict.title') : (res.error ?? '')
     await alertBox(t('dlg.error.title'), msg)
     return
   }
-  await active.load(active.path, { push: false, focusName: name.trim() })
-  if (other(active).path === active.path) await other(active).refresh()
+  await pane.load(pane.path, { push: false, focusName: name })
+  if (other(pane).path === pane.path) await other(pane).refresh()
 }
 
 async function trashTargets(): Promise<void> {
@@ -584,7 +581,7 @@ const commands: Record<string, () => void | Promise<void>> = {
   copy: () => transfer('copy'),
   move: () => transfer('move'),
   mkdir: makeDir,
-  rename: renameCurrent,
+  rename: () => active.beginRename(),
   trash: trashTargets,
   refresh: () => {
     void panes.left.refresh()
@@ -657,9 +654,12 @@ function toast(message: string): void {
 
 async function run(cmd: string): Promise<void> {
   if (operating || isModalOpen()) return
+  if (cmd === 'rename' && active.isEditing()) return
+  // A command issued while a name is being edited applies the edit first.
+  for (const p of [panes.left, panes.right]) await p.finishRename(true)
   try { await commands[cmd]?.() }
   catch (e) { await alertBox(t('dlg.error.title'), e instanceof Error ? e.message : String(e)) }
-  if (!isModalOpen()) active.focus()
+  if (!isModalOpen() && !active.isEditing()) active.focus()
 }
 
 // ---------- function key bar ----------

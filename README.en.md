@@ -23,7 +23,7 @@ On macOS, copy the app from the DMG to Applications. If the first launch is bloc
 | `Tab` | Switch pane |
 | `Enter` | Open folder or file |
 | `Space` / `Insert` | Toggle selection |
-| `F2` | Rename |
+| `F2` | Rename (or click a selected name again, slowly) |
 | `F5` / `F6` | Copy / move to the other pane |
 | `F7` | New folder |
 | `F8` / `Delete` | Delete |

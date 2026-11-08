@@ -351,6 +351,21 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.row .rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  margin-left: -4px;
+  padding: 0 3px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: normal;
+  outline: none;
+  user-select: text;
+}
 .row .sys-icon {
   object-fit: contain;
 }

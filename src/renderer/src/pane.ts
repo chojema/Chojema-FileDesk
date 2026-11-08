@@ -37,6 +37,8 @@ export interface PaneHost {
   disconnect(pane: Pane): void
   /** A drag of the given items has started from this pane. */
   startDrag(pane: Pane, items: FileEntry[], e: DragEvent): void
+  /** Renames an entry of this pane; reloads the pane on success. */
+  renameEntry(pane: Pane, entry: FileEntry, name: string): Promise<void>
   /** Right-click in the list; onRow is false for empty space and "..". */
   contextMenu(pane: Pane, onRow: boolean, extended: boolean): void
   columnWidth(key: keyof ColumnWidths): number
@@ -66,6 +68,10 @@ export class Pane {
   /** Selected row pressed without modifiers: clear the rest on click, keep it for a drag. */
   private pendingClear = -1
   private dropRow = -1
+  /** Press on the name of the item that already had the cursor: a later single click starts renaming. */
+  private renameArm = false
+  private renameTimer = 0
+  private editing: { entry: FileEntry; input: HTMLInputElement; done: boolean } | null = null
 
   private root: HTMLElement
   private placesEl: HTMLElement
@@ -143,13 +149,26 @@ export class Pane {
     this.listEl.addEventListener('click', (e) => {
       const idx = this.pendingClear
       this.pendingClear = -1
-      if (idx < 0 || this.rowIndexAt(e) !== idx) return
-      this.selected.clear()
-      this.updateRowStates()
-      void this.updateStatus()
+      const at = this.rowIndexAt(e)
+      if (idx >= 0 && at === idx) {
+        this.selected.clear()
+        this.updateRowStates()
+        void this.updateStatus()
+      }
+      // Slow second click on the name (Finder/Explorer): rename once the double-click time has passed.
+      if (this.renameArm && e.detail === 1 && at === this.cursor) {
+        const path = this.rows[at]?.entry?.path
+        this.renameTimer = window.setTimeout(() => {
+          if (this.rows[this.cursor]?.entry?.path === path && document.activeElement === this.listEl) this.beginRename()
+        }, 500)
+      }
+      this.renameArm = false
     })
+    this.listEl.addEventListener('keydown', () => this.cancelSlowRename())
     this.listEl.addEventListener('contextmenu', (e) => {
       e.preventDefault()
+      this.cancelSlowRename()
+      if (this.editing && e.target === this.editing.input) return
       const idx = this.rowIndexAt(e)
       const entry = this.rows[idx]?.entry
       this.pendingClear = -1
@@ -168,6 +187,7 @@ export class Pane {
       const idx = this.rowIndexAt(e)
       const entry = this.rows[idx]?.entry
       this.pendingClear = -1
+      this.cancelSlowRename()
       if (!entry) { e.preventDefault(); return }
       if (this.selected.size && !this.selected.has(entry.path)) {
         this.selected.clear()
@@ -176,6 +196,7 @@ export class Pane {
       this.host.startDrag(this, this.targets(), e)
     })
     this.listEl.addEventListener('dblclick', (e) => {
+      this.cancelSlowRename()
       const idx = this.rowIndexAt(e)
       if (idx >= 0) this.openAt(idx)
     })
@@ -206,6 +227,63 @@ export class Pane {
     this.pathInput.select()
   }
 
+  isEditing(): boolean {
+    return !!this.editing
+  }
+
+  /** Turns the name of the item under the cursor into an inline text field. */
+  beginRename(): void {
+    this.cancelSlowRename()
+    const entry = this.rows[this.cursor]?.entry
+    if (!entry || this.editing) return
+    const input = el('input', { class: 'rename-input', type: 'text', value: entry.name, spellcheck: false })
+    const ed = { entry, input, done: false }
+    this.editing = ed
+    for (const type of ['mousedown', 'click', 'dblclick'] as const) input.addEventListener(type, (ev) => ev.stopPropagation())
+    input.addEventListener('keydown', (ev) => {
+      ev.stopPropagation()
+      if (ev.isComposing || ev.keyCode === 229) return
+      if (ev.key === 'Enter' || ev.key === 'Tab') {
+        ev.preventDefault()
+        void this.finishRename(true)
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault()
+        void this.finishRename(false)
+      }
+    })
+    // Clicking elsewhere commits, like Finder and Explorer. Losing focus to another window keeps editing.
+    input.addEventListener('blur', () =>
+      window.setTimeout(() => {
+        if (this.editing === ed && input.isConnected && document.activeElement !== input && document.hasFocus()) void this.finishRename(true)
+      })
+    )
+    this.ensureVisible()
+    this.renderRows()
+    input.focus({ preventScroll: true })
+    const dot = entry.isDir ? -1 : entry.name.lastIndexOf('.')
+    if (dot > 0) input.setSelectionRange(0, dot)
+    else input.select()
+  }
+
+  /** Ends inline renaming; with commit, applies a changed name. */
+  async finishRename(commit: boolean): Promise<void> {
+    const ed = this.editing
+    if (!ed || ed.done) return
+    ed.done = true
+    this.editing = null
+    const name = ed.input.value.trim()
+    const active = document.activeElement
+    const refocus = active === ed.input || !active || active === document.body
+    this.renderRows()
+    if (refocus) this.focus()
+    if (commit && name && name !== ed.entry.name) await this.host.renameEntry(this, ed.entry, name)
+  }
+
+  private cancelSlowRename(): void {
+    window.clearTimeout(this.renameTimer)
+    this.renameArm = false
+  }
+
   setActive(active: boolean): void {
     this.root.classList.toggle('active', active)
   }
@@ -226,6 +304,9 @@ export class Pane {
     }
     const listing = res.value
     const sameDir = listing.path === this.path
+    this.cancelSlowRename()
+    const editPath = this.editing?.entry.path
+    if (editPath && (!sameDir || !listing.entries.some((e) => e.path === editPath))) void this.finishRename(false)
     const prevName = this.rows[this.cursor]?.entry?.name
     if (!sameDir && opts.push !== false && this.path) {
       this.history.push(this.path)
@@ -502,8 +583,15 @@ export class Pane {
 
   private onMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return
+    this.cancelSlowRename()
     const idx = this.rowIndexAt(e)
     if (idx < 0) return
+    const hit = this.rows[idx].entry
+    this.renameArm =
+      !!hit && e.detail === 1 && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey &&
+      idx === this.cursor && document.activeElement === this.listEl &&
+      (this.selected.size === 0 || (this.selected.size === 1 && this.selected.has(hit.path))) &&
+      e.target instanceof Element && !!e.target.closest('.name span')
     // No preventDefault: it would stop rows from being dragged. Rows are not text-selectable.
     this.host.activate(this)
     this.focus()
@@ -697,7 +785,12 @@ export class Pane {
     const end = Math.min(this.rows.length, Math.ceil((this.listEl.scrollTop + this.listEl.clientHeight) / ROW_H) + BUFFER)
     const frag = document.createDocumentFragment()
     for (let i = start; i < end; i++) frag.append(this.renderRow(i))
+    const ed = this.editing
+    const hadFocus = !!ed && document.activeElement === ed.input
     this.innerEl.replaceChildren(frag)
+    if (!ed) return
+    if (!ed.input.isConnected) void this.finishRename(true) // scrolled out of view
+    else if (hadFocus) ed.input.focus({ preventScroll: true })
   }
 
   private renderRow(i: number): HTMLElement {
@@ -718,12 +811,14 @@ export class Pane {
       return div
     }
     const e = row.entry!
-    div.draggable = true
+    const editing = this.editing?.entry.path === e.path
+    div.draggable = !editing
+    if (editing) div.classList.add('editing')
     if (e.isDir) div.classList.add('dir')
     if (e.hidden || e.dot) div.classList.add('hidden-entry')
     if (this.selected.has(e.path)) div.classList.add('selected')
     const size = e.isDir ? (this.dirSizes.has(e.path) ? formatSize(this.dirSizes.get(e.path)!) : t('dir')) : formatSize(e.size)
-    const name = el('span', { textContent: e.isDir || !e.ext ? e.name : e.name.slice(0, -(e.ext.length + 1)) })
+    const name = editing ? this.editing!.input : el('span', { textContent: e.isDir || !e.ext ? e.name : e.name.slice(0, -(e.ext.length + 1)) })
     div.title = e.name
     div.append(
       el('div', { class: 'name' }, e.isDir || e.isSymlink ? icon(e.isSymlink ? 'link' : 'folder') : this.fileIcon(e), name),
