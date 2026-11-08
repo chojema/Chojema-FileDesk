@@ -61,6 +61,6 @@ Use **Information → Check for Updates** to download and open an installer; Fil
 
 ## Data
 
-Settings and server profiles stay on this computer. Password storage is optional and uses OS encryption. No usage statistics are collected.
+Settings and server profiles are stored on your computer. Password storage is optional and uses OS encryption. No usage statistics are collected.
 
 [MIT License](LICENSE) | © 2026 Chulwoo Park
