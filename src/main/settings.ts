@@ -3,6 +3,7 @@ import { promises as fsp, readFileSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import type { Settings } from '@shared/types'
+import { normalizePlaceVisibility } from '@shared/places'
 
 // Settings live only on the local machine (the OS per-user app data folder). Nothing is sent anywhere.
 const file = () => path.join(app.getPath('userData'), 'settings.json')
@@ -25,6 +26,7 @@ export function defaultSettings(): Settings {
     checkUpdatesOnStart: false,
     windowStart: 'restore',
     showFkeys: true,
+    visiblePlaces: normalizePlaceVisibility(undefined),
     columns: { ext: 64, size: 88, mtime: 132 },
     recentDirs: [],
     favorites: [],
@@ -55,6 +57,7 @@ export function normalizeSettings(value: unknown): Settings {
   raw.favorites = strings(raw.favorites)
   raw.windowStart = raw.windowStart === 'reset' ? 'reset' : 'restore'
   raw.showFkeys = raw.showFkeys !== false
+  raw.visiblePlaces = normalizePlaceVisibility(raw.visiblePlaces)
   const width = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(600, Math.max(36, v))) : d)
   const cols = (raw.columns ?? {}) as Partial<Settings['columns']>
   raw.columns = { ext: width(cols.ext, def.columns.ext), size: width(cols.size, def.columns.size), mtime: width(cols.mtime, def.columns.mtime) }

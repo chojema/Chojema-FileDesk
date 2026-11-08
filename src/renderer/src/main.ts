@@ -9,6 +9,7 @@ import { APP_LINKS } from '@shared/links'
 import { isRemotePath, remotePath } from '@shared/remote-path'
 import { connectDialog, connectSaved } from './server-ui'
 import { showUpdate } from './update-ui'
+import { PLACE_SHORTCUTS, visiblePlaces } from '@shared/places'
 
 let settings: Settings
 let active: Pane
@@ -80,6 +81,7 @@ const host: PaneHost = {
   },
   renameEntry: (pane, entry, name) => renameEntry(pane, entry, name),
   contextMenu: (pane, onRow, extended) => void showContextMenu(pane, onRow, extended),
+  placeContextMenu: (pane, place, extended) => void guarded(() => showPlaceContextMenu(pane, place, extended)),
   columnWidth: (key) => settings.columns[key],
   resizeColumn(key, width, done) {
     // Both panes share the widths; keep at least 80px for names in the narrower pane.
@@ -99,6 +101,35 @@ function applyColumns(): void {
 }
 
 // ---------- context menu ----------
+
+async function showPlaceContextMenu(pane: Pane, place: Place, extended: boolean): Promise<void> {
+  if (operating || isModalOpen()) return
+  const remote = isRemotePath(place.path)
+  const items: ContextItem[] = [
+    { id: 'placeOpen', label: t('place.open') },
+    { id: 'placeOther', label: t('place.openOther') },
+    { type: 'separator' },
+    { id: 'placeCopyPath', label: t('place.copyPath') },
+    ...(!remote ? [
+      { id: 'placeReveal', label: t('ctx.openFolder') },
+      { id: 'placeTerminal', label: t('tb.terminal') }
+    ] : [])
+  ]
+  const result = await api.contextMenu({ paths: [place.path], folder: place.path, items, extras: items, place: true, extended })
+  if (result.id === 'placeOpen') await pane.load(place.path)
+  else if (result.id === 'placeOther') {
+    const target = other(pane)
+    if (await target.load(place.path)) host.activate(target)
+  } else if (result.id === 'placeCopyPath') await api.writeClipboard(place.path)
+  else if (result.id === 'placeReveal') {
+    const opened = await api.openPath(place.path)
+    if (!opened.ok) throw new Error(opened.error)
+  } else if (result.id === 'placeTerminal') {
+    const opened = await api.openTerminal(place.path)
+    if (!opened.ok) throw new Error(opened.error)
+  }
+  if (result.changed) window.setTimeout(() => void loadPlaces(), 600)
+}
 
 async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): Promise<void> {
   if (operating || isModalOpen()) return
@@ -519,6 +550,7 @@ async function openSettings(): Promise<void> {
   const confirmDel = el('input', { type: 'checkbox', checked: settings.confirmDelete, id: 'set-confirm' })
   const autoUpdate = el('input', { type: 'checkbox', checked: settings.checkUpdatesOnStart, id: 'set-updates' })
   const fkeys = el('input', { type: 'checkbox', checked: settings.showFkeys, id: 'set-fkeys' })
+  const shortcuts = PLACE_SHORTCUTS.map(id => ({ id, input: el('input', { type: 'checkbox', checked: settings.visiblePlaces[id], id: `set-place-${id}` }) }))
   const form = el(
     'div',
     {},
@@ -528,6 +560,9 @@ async function openSettings(): Promise<void> {
     el('div', { class: 'group-label', textContent: t('set.hiddenGroup') }),
     el('label', { class: 'check' }, hidden, t('set.hidden')),
     el('label', { class: 'check' }, dot, t('set.dot')),
+    el('div', { class: 'group-sep' }),
+    el('div', { class: 'group-label', textContent: t('set.places') }),
+    ...shortcuts.map(({ id, input }) => el('label', { class: 'check' }, input, t(id === 'desktop' && api.platform === 'win32' ? 'places.desktopWindows' : `places.${id}`))),
     el('div', { class: 'group-sep' }),
     el('label', { class: 'check' }, fkeys, t('set.fkeys')),
     el('label', { class: 'check' }, confirmDel, t('set.confirmDelete')),
@@ -552,6 +587,8 @@ async function openSettings(): Promise<void> {
   settings.confirmDelete = confirmDel.checked
   settings.checkUpdatesOnStart = autoUpdate.checked
   settings.showFkeys = fkeys.checked
+  for (const { id, input } of shortcuts) settings.visiblePlaces[id] = input.checked
+  applyPlaces()
   applyTheme()
   applyFkeys()
   if (langChanged) {
@@ -873,14 +910,19 @@ function initResize(): void {
 
 let places: Place[] = []
 let placesRequest = 0
+function applyPlaces(): void {
+  const shown = visiblePlaces(places, settings.visiblePlaces)
+  panes.left.setPlaces(shown)
+  panes.right.setPlaces(shown)
+}
+
 async function loadPlaces(): Promise<void> {
   const request = ++placesRequest
   const list = await api.places()
   if (request !== placesRequest) return // a newer reload is under way
   const before = places
   places = list
-  panes.left.setPlaces(list)
-  panes.right.setPlaces(list)
+  applyPlaces()
   // A pane showing a drive that was just removed moves to the first place (home).
   const gone = before.filter(p => (p.kind === 'drive' || p.kind === 'volume') && !list.some(q => q.id === p.id))
   for (const pane of [panes.left, panes.right]) {
@@ -893,6 +935,7 @@ async function loadPlaces(): Promise<void> {
 // ---------- boot ----------
 
 async function boot(): Promise<void> {
+  let booting = true
   settings = await api.getSettings()
   setLang(settings.lang)
   applyTheme()
@@ -904,7 +947,7 @@ async function boot(): Promise<void> {
 
   for (const side of ['left', 'right'] as PaneSide[]) {
     const root = document.querySelector<HTMLElement>(`.pane[data-side="${side}"]`)!
-    const p = new Pane(root, side, host)
+    const p = new Pane(root, side, host, settings.panes[side].path)
     p.sortKey = settings.panes[side].sortKey
     p.sortAsc = settings.panes[side].sortAsc
     lastLocal[side] = isRemotePath(settings.panes[side].path) ? '' : settings.panes[side].path
@@ -914,15 +957,6 @@ async function boot(): Promise<void> {
   active = panes.left
   panes.left.setActive(true)
   renderToolbar()
-  await loadPlaces()
-
-  const fallback = (await api.places())[0]?.path ?? '/'
-  for (const side of ['left', 'right'] as PaneSide[]) {
-    const ok = await panes[side].load(settings.panes[side].path, { push: false, silent: true })
-    if (!ok) await panes[side].load(fallback, { push: false })
-  }
-  active.focus()
-
   window.addEventListener('keydown', onKey)
   api.onMenu((cmd) => void run(cmd))
   api.onPlacesChanged(() => void loadPlaces())
@@ -931,11 +965,20 @@ async function boot(): Promise<void> {
   }, 1500)
   // Pick up external changes when the window regains focus.
   window.addEventListener('focus', () => {
-    if (!operating && !isModalOpen()) {
+    if (!booting && !operating && !isModalOpen()) {
       void panes.left.refresh()
       void panes.right.refresh()
     }
   })
+
+  // Drive discovery and each pane load independently. A slow/unavailable drive must not
+  // delay local folders, the other pane, or command registration.
+  const fallback = loadPlaces().catch(e => host.onError(String(e))).then(() =>
+    places.find(p => p.id === 'home')?.path ?? places[0]?.path ?? '/')
+  await Promise.all((['left', 'right'] as PaneSide[]).map(side =>
+    panes[side].loadInitial(settings.panes[side].path, fallback)))
+  booting = false
+  if (document.activeElement === document.body) active.focus()
 }
 
 void boot()

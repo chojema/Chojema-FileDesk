@@ -14,7 +14,7 @@ import { APP_LINKS } from '@shared/links'
 import { isRemotePath } from '@shared/remote-path'
 import type { ConnectRequest, ContextItem, FileClipboard, ShellMenuRequest, ShellMenuResult } from '@shared/types'
 import { setWinClipboardFiles, showWinMenu, startWinHelper, stopWinHelper, winClipboardFiles, winHelperReady } from './win-helper'
-import { clipboardFiles, copyFiles, showMacMenu } from './mac-shell'
+import { clipboardFiles, copyFiles, showMacMenu, showMacPlaceMenu } from './mac-shell'
 import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
 import dragIconPath from '../../resources/icon-256.png?asset'
 
@@ -148,13 +148,15 @@ function registerIpc(): void {
     await saveSettings(s)
   })
   ipcMain.handle('menu:lang', (_e, lang: Lang) => {
-    refreshMenu({ ...settings, lang })
+    if (lang !== 'ko' && lang !== 'en') return
+    settings = { ...settings, lang }
+    refreshMenu()
   })
   ipcMain.handle('fs:list', (_e, p: string) => files.list(p))
   ipcMain.handle('fs:places', async () => [
     ...await fsops.places({
       home: translate(settings.lang, 'places.home'),
-      desktop: translate(settings.lang, 'places.desktop'),
+      desktop: translate(settings.lang, process.platform === 'win32' ? 'places.desktopWindows' : 'places.desktop'),
       documents: translate(settings.lang, 'places.documents'),
       downloads: translate(settings.lang, 'places.downloads')
     }),
@@ -248,6 +250,9 @@ function registerIpc(): void {
     const local = !isRemotePath(req.folder) && path.isAbsolute(req.folder) &&
       req.paths.every((p) => typeof p === 'string' && !isRemotePath(p) && path.isAbsolute(p))
     if (local && process.platform === 'darwin') {
+      if (req.place && req.paths.length === 1) {
+        return showMacPlaceMenu(owner, req.paths[0], req.extras, settings.lang, (message) => owner.webContents.send('app:error', message))
+      }
       return showMacMenu(owner, req, settings.lang, (message) => owner.webContents.send('app:error', message))
     }
     if (local && process.platform === 'win32' && winHelperReady()) {

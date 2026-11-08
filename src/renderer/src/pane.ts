@@ -41,6 +41,7 @@ export interface PaneHost {
   renameEntry(pane: Pane, entry: FileEntry, name: string): Promise<void>
   /** Right-click in the list; onRow is false for empty space and "..". */
   contextMenu(pane: Pane, onRow: boolean, extended: boolean): void
+  placeContextMenu(pane: Pane, place: Place, extended: boolean): void
   columnWidth(key: keyof ColumnWidths): number
   /** Live resize of a shared column; done is true when the drag ends. */
   resizeColumn(key: keyof ColumnWidths, width: number, done: boolean): void
@@ -64,6 +65,7 @@ export class Pane {
   private typeTimer = 0
   private placesList: Place[] = []
   private loadSeq = 0
+  private loaded = false
   private parent: string | null = null
   /** Selected row pressed without modifiers: clear the rest on click, keep it for a drag. */
   private pendingClear = -1
@@ -91,16 +93,19 @@ export class Pane {
   constructor(
     root: HTMLElement,
     side: PaneSide,
-    private host: PaneHost
+    private host: PaneHost,
+    initialPath = ''
   ) {
     this.root = root
     this.side = side
+    this.path = initialPath
 
     this.placesEl = el('nav', { class: 'places' })
     this.backBtn = el('button', { class: 'nav-btn', type: 'button', tabIndex: -1 }, icon('back', ''))
     this.fwdBtn = el('button', { class: 'nav-btn', type: 'button', tabIndex: -1 }, icon('forward', ''))
     const upBtn = el('button', { class: 'nav-btn', type: 'button', tabIndex: -1 }, icon('parent', ''))
     this.pathInput = el('input', { class: 'path-input', type: 'text', spellcheck: false, tabIndex: -1 })
+    this.pathInput.value = initialPath
     this.hiddenBtn = el('button', { class: 'nav-btn hidden-toggle', type: 'button', tabIndex: -1 })
     this.hiddenBtn.addEventListener('mousedown', (e) => e.preventDefault())
     this.hiddenBtn.addEventListener('click', () => this.host.toggleHiddenAll())
@@ -137,6 +142,7 @@ export class Pane {
     this.statusLeft = el('span')
     this.statusRight = el('span')
     const status = el('div', { class: 'pane-status' }, this.statusLeft, this.statusRight)
+    this.statusLeft.textContent = t('status.loading')
     root.append(this.placesEl, pathbar, this.colsEl, this.listEl, status)
 
     this.backBtn.addEventListener('click', () => this.goBack())
@@ -294,6 +300,15 @@ export class Pane {
     this.refreshTools()
   }
 
+  /** An in-flight initial load must never replace a navigation the user started later. */
+  async loadInitial(path: string, fallback: Promise<string>): Promise<void> {
+    const request = this.loadSeq + 1
+    const ok = await this.load(path, { push: false, silent: true })
+    if (ok || request !== this.loadSeq) return
+    const dest = await fallback
+    if (request === this.loadSeq) await this.load(dest, { push: false })
+  }
+
   async load(path: string, opts: { push?: boolean; focusName?: string; keepCursor?: boolean; silent?: boolean } = {}): Promise<boolean> {
     const seq = ++this.loadSeq
     const res = await api.listDir(path)
@@ -303,7 +318,8 @@ export class Pane {
       return false
     }
     const listing = res.value
-    const sameDir = listing.path === this.path
+    const sameDir = this.loaded && listing.path === this.path
+    this.loaded = true
     this.cancelSlowRename()
     const editPath = this.editing?.entry.path
     if (editPath && (!sameDir || !listing.entries.some((e) => e.path === editPath))) void this.finishRename(false)
@@ -764,8 +780,15 @@ export class Pane {
       ...this.placesList.map((p) => {
         const b = el('button', { class: `place ${current?.id === p.id ? 'current' : ''}`, type: 'button', tabIndex: -1, title: p.path })
         b.append(icon(iconFor[p.kind], ''), el('span', { textContent: p.label }))
+        b.dataset.placeId = p.id
         b.addEventListener('click', () => {
           void this.load(p.path).then(() => this.focus())
+        })
+        b.addEventListener('contextmenu', (e) => {
+          e.preventDefault()
+          this.cancelSlowRename()
+          this.host.activate(this)
+          this.host.placeContextMenu(this, p, e.shiftKey)
         })
         return b
       })

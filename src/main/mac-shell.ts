@@ -7,8 +7,8 @@ import type { ContextItem, Lang, ShellMenuResult } from '@shared/types'
 
 // macOS: Finder-style context menu.
 
-const run = (cmd: string, args: string[], cwd?: string) => new Promise<string>((resolve, reject) => {
-  execFile(cmd, args, { cwd, maxBuffer: 1 << 20 }, (err, stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve(stdout)))
+const run = (cmd: string, args: string[], cwd?: string, timeout?: number) => new Promise<string>((resolve, reject) => {
+  execFile(cmd, args, { cwd, timeout, maxBuffer: 1 << 20 }, (err, stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve(stdout)))
 })
 
 const OPEN_WITH = `function run(argv) {
@@ -85,6 +85,35 @@ export async function clipboardFiles(): Promise<string[]> {
 }
 
 export interface MacMenuRequest { paths: string[]; folder: string; extras: ContextItem[] }
+
+/** Drive/shortcut menu: no file-only commands such as Trash, Rename or Compress. */
+export async function showMacPlaceMenu(win: BrowserWindow, target: string, extras: ContextItem[], lang: Lang, onError: (message: string) => void): Promise<ShellMenuResult> {
+  let ejectable = false
+  if (path.dirname(target) === '/Volumes') {
+    try {
+      const info = await run('/usr/sbin/diskutil', ['info', '-plist', target], undefined, 1500)
+      ejectable = /<key>Ejectable<\/key>\s*<true\s*\/>/.test(info)
+    } catch { /* A network share or a volume that is no longer available. */ }
+  }
+  return new Promise(resolve => {
+    let settled = false
+    let acting = false
+    const done = (result: ShellMenuResult) => { if (!settled) { settled = true; resolve(result) } }
+    const action = (fn: () => Promise<unknown>, changed = false) => () => {
+      acting = true
+      void fn().then(() => done({ changed })).catch(e => {
+        onError(e instanceof Error ? e.message : String(e))
+        done({})
+      })
+    }
+    const items: MenuItemConstructorOptions[] = extras.map(it => it.type === 'separator'
+      ? { type: 'separator' }
+      : { label: it.label, click: () => done({ id: it.id }) })
+    items.push({ type: 'separator' }, { label: translate(lang, 'fx.getInfo'), click: action(() => getInfo([target])) })
+    if (ejectable) items.push({ label: translate(lang, 'place.eject'), click: action(() => run('/usr/sbin/diskutil', ['eject', target]), true) })
+    Menu.buildFromTemplate(items).popup({ window: win, callback: () => setTimeout(() => { if (!acting) done({}) }, 100) })
+  })
+}
 
 export function showMacMenu(win: BrowserWindow, req: MacMenuRequest, lang: Lang, onError: (message: string) => void): Promise<ShellMenuResult> {
   const t = (k: MsgKey, v?: Record<string, string | number>) => translate(lang, k, v)

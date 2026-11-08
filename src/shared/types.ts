@@ -48,6 +48,9 @@ export interface ColumnWidths {
   mtime: number
 }
 
+export type PlaceShortcut = 'home' | 'desktop' | 'documents' | 'downloads'
+export type PlaceVisibility = Record<PlaceShortcut, boolean>
+
 export interface Settings {
   lang: Lang
   theme: ThemePref
@@ -57,6 +60,8 @@ export interface Settings {
   checkUpdatesOnStart: boolean
   windowStart: 'restore' | 'reset'
   showFkeys: boolean
+  /** Optional shortcuts in the drive bar; drives and connected servers remain visible. */
+  visiblePlaces: PlaceVisibility
   /** File list column widths in px, shared by both panes; the name column takes the rest. */
   columns: ColumnWidths
   /** Most recently visited folders, newest first (local only). */
@@ -146,6 +151,8 @@ export interface ShellMenuRequest {
   extras: ContextItem[]
   /** Shift+right-click: Windows extended verbs. */
   extended?: boolean
+  /** The selected item is a shortcut or drive in the places bar. */
+  place?: boolean
 }
 
 export interface ShellMenuResult {

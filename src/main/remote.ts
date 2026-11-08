@@ -1,5 +1,5 @@
-import { Client as FtpClient } from 'basic-ftp'
-import SftpClient from 'ssh2-sftp-client'
+import type { Client as FtpClient } from 'basic-ftp'
+import type SftpClient from 'ssh2-sftp-client'
 import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -50,6 +50,7 @@ export class RemoteManager {
     const s: Session = { connection: { id: p.id, name: p.name, root }, queue: Promise.resolve(), closed: false }
     try {
       if (p.protocol === 'sftp') {
+        const { default: SftpClient } = await import('ssh2-sftp-client')
         const client = new SftpClient('FileDesk', { error: () => { s.closed = true }, end: () => { s.closed = true } })
         s.sftp = client
         await client.connect({
@@ -67,6 +68,7 @@ export class RemoteManager {
         if (!stat.isDirectory) throw new Error('The remote initial path is not a directory')
         s.connection.root = remoteUrl(root, dir)
       } else {
+        const { Client: FtpClient } = await import('basic-ftp')
         const ftp = new FtpClient(30000)
         s.ftp = ftp
         // Complete TLS validation/explicit trust before sending login credentials.
