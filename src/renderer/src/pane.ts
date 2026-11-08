@@ -2,7 +2,7 @@ import type { ColumnWidths, FileEntry, PaneSide, Place, SortKey } from '@shared/
 import { isRemotePath, remotePath } from '@shared/remote-path'
 import { api, collator, el, formatDate, formatSize, icon, isMac, t, type IconName } from './util'
 
-const ROW_H = 26
+const ROW_H = 24 // keep in sync with --row-h in styles.css
 
 // System icons are shared by extension; on Windows some types carry their own icon per file.
 const iconCache = new Map<string, string>()

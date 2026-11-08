@@ -84,7 +84,7 @@ const host: PaneHost = {
   resizeColumn(key, width, done) {
     // Both panes share the widths; keep at least 80px for names in the narrower pane.
     const others = (Object.keys(settings.columns) as (keyof ColumnWidths)[]).filter((k) => k !== key).reduce((n, k) => n + settings.columns[k], 0)
-    const room = Math.min(panes.left.columnsWidth(), panes.right.columnsWidth()) - 20 - 3 * 8 - others - 80
+    const room = Math.min(panes.left.columnsWidth(), panes.right.columnsWidth()) - 32 - 3 * 8 - others - 80
     settings.columns[key] = Math.round(Math.max(36, Math.min(600, room, width)))
     applyColumns()
     if (done) persist()
