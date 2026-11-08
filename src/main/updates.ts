@@ -1,4 +1,5 @@
 import { app, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { RELEASE_API, assetUrl, checkedDownload, selectUpdate } from './update-core'
@@ -37,18 +38,52 @@ export async function downloadUpdate(progress: (p: UpdateProgress) => void): Pro
     const target = path.join(work, asset.name)
     const response = await fetch(assetUrl(asset, release.tag_name), { signal: AbortSignal.timeout(30 * 60 * 1000) })
     await checkedDownload(response, target, asset.size, checksum, progress)
-    let installer = target
-    // A portable build is replaced by placing the new executable next to the current one.
-    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
-    if (portableDir) {
-      const beside = path.join(portableDir, asset.name)
-      try { await fs.copyFile(target, beside); installer = beside } catch { /* keep the verified temp copy */ }
+    const portable = process.env.PORTABLE_EXECUTABLE_FILE
+    if (process.platform === 'win32' && portable) await replacePortable(target, portable)
+    else if (process.platform === 'win32') await runUpdater(target)
+    else {
+      const error = await shell.openPath(target)
+      if (error) throw new Error(error)
     }
-    const error = await shell.openPath(installer)
-    if (error) throw new Error(error)
     // Quit so the installer (or Finder on macOS) can replace the running app.
     setTimeout(() => app.quit(), 1500)
-    return installer
+    return target
   } catch (e) { if (work) await fs.rm(work, { recursive: true, force: true }); throw e }
   finally { busy = false }
+}
+
+/**
+ * Starts the Windows installer as an update. "--updated" makes it uninstall the old version with
+ * --keep-shortcuts, so taskbar and Start pins survive; it also keeps the install folder and starts
+ * the app when done. Falls back to a normal open (for example when elevation is required).
+ */
+function runUpdater(installer: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(installer, ['--updated'], { detached: true, stdio: 'ignore' })
+    child.once('spawn', () => { child.unref(); resolve() })
+    child.once('error', () => { void shell.openPath(installer).then(error => error ? reject(new Error(error)) : resolve()) })
+  })
+}
+
+/**
+ * Replaces the running portable executable in place after FileDesk exits, then starts it, so a
+ * pinned shortcut keeps pointing at the same file. The exe stays locked until its launcher exits,
+ * so a hidden PowerShell retries the move for up to a minute.
+ */
+async function replacePortable(source: string, current: string): Promise<void> {
+  const script = [
+    '$ErrorActionPreference = "Stop"',
+    'for ($i = 0; $i -lt 120; $i++) {',
+    '  try { Move-Item -LiteralPath $env:FD_SOURCE -Destination $env:FD_TARGET -Force; Start-Process -FilePath $env:FD_TARGET; exit 0 }',
+    '  catch { Start-Sleep -Milliseconds 500 }',
+    '}',
+    'Start-Process -FilePath $env:FD_SOURCE'
+  ].join('\n')
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script], {
+      detached: true, stdio: 'ignore', windowsHide: true, env: { ...process.env, FD_SOURCE: source, FD_TARGET: current }
+    })
+    child.once('spawn', () => { child.unref(); resolve() })
+    child.once('error', reject)
+  })
 }

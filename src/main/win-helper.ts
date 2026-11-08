@@ -18,7 +18,28 @@ while ($true) {
   try {
     $r = ConvertFrom-Json $line
     $id = $r.id
-    $result = [FdHelper]::Show([string[]]@($r.paths), [string]$r.folder, [string[]]@($r.ids), [string[]]@($r.labels), [bool]$r.extended)
+    if ($r.op -eq 'clipSet') {
+      if (@($r.paths).Count -eq 0) { [Windows.Forms.Clipboard]::Clear() }
+      else {
+        $files = New-Object System.Collections.Specialized.StringCollection
+        foreach ($p in @($r.paths)) { [void]$files.Add([string]$p) }
+        $data = New-Object Windows.Forms.DataObject
+        $data.SetFileDropList($files)
+        $effect = if ($r.cut) { 2 } else { 5 }
+        $data.SetData('Preferred DropEffect', (New-Object IO.MemoryStream (,[byte[]]@($effect, 0, 0, 0))))
+        [Windows.Forms.Clipboard]::SetDataObject($data, $true)
+      }
+      $result = 'ok'
+    } elseif ($r.op -eq 'clipGet') {
+      $list = @()
+      if ([Windows.Forms.Clipboard]::ContainsFileDropList()) { $list = @([Windows.Forms.Clipboard]::GetFileDropList()) }
+      $cut = $false
+      $effect = [Windows.Forms.Clipboard]::GetData('Preferred DropEffect')
+      if ($effect -is [IO.MemoryStream]) { $b = $effect.ToArray(); $cut = $b.Length -gt 0 -and ($b[0] -band 2) -ne 0 }
+      $result = ConvertTo-Json -Compress @{ paths = [string[]]$list; cut = $cut }
+    } else {
+      $result = [FdHelper]::Show([string[]]@($r.paths), [string]$r.folder, [string[]]@($r.ids), [string[]]@($r.labels), [bool]$r.extended)
+    }
     [FdHelper]::Write((ConvertTo-Json -Compress @{ id = $id; result = $result }))
   } catch {
     [FdHelper]::Write((ConvertTo-Json -Compress @{ id = $id; error = $_.Exception.Message }))
@@ -80,6 +101,28 @@ export function showWinMenu(request: WinMenuRequest): Promise<string> {
     pending.set(id, { resolve, reject })
     proc.stdin.write(JSON.stringify({ id, ...request }) + '\n')
   })
+}
+
+function call(request: Record<string, unknown>): Promise<string> {
+  if (!child || !ready) return Promise.reject(new Error('Windows helper not ready'))
+  const id = ++serial
+  const proc = child
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject })
+    proc.stdin.write(JSON.stringify({ id, ...request }) + '\n')
+  })
+}
+
+/** Files on the Windows clipboard (CF_HDROP) and whether Explorer marked them as cut. */
+export async function winClipboardFiles(): Promise<{ paths: string[]; cut: boolean }> {
+  const v = JSON.parse(await call({ op: 'clipGet' })) as { paths?: unknown; cut?: unknown }
+  const paths = (Array.isArray(v.paths) ? v.paths : typeof v.paths === 'string' ? [v.paths] : []).filter((p): p is string => typeof p === 'string')
+  return { paths, cut: v.cut === true }
+}
+
+/** Puts files on the Windows clipboard the way Explorer does; an empty list clears it. */
+export async function setWinClipboardFiles(paths: string[], cut: boolean): Promise<void> {
+  await call({ op: 'clipSet', paths, cut })
 }
 
 export function stopWinHelper(): void {

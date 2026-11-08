@@ -43,6 +43,7 @@ export function buildMenu(win: BrowserWindow, settings: Settings, connected = fa
       { type: 'separator' },
       cmd('menu.copy', 'copy', 'F5'),
       cmd('menu.move', 'move', 'F6'),
+      cmd('fx.duplicate', 'duplicate', 'CmdOrCtrl+D'),
       cmd('menu.trash', 'trash', 'F8'),
       { type: 'separator' },
       cmd('menu.reveal', 'reveal'),
@@ -78,7 +79,7 @@ export function buildMenu(win: BrowserWindow, settings: Settings, connected = fa
     submenu: [
       cmd('menu.refresh', 'refresh', 'CmdOrCtrl+R'),
       cmd('tb.history', 'history', 'Alt+Down'),
-      cmd('tb.favorites', 'favorites', 'CmdOrCtrl+D'),
+      cmd('tb.favorites', 'favorites', 'CmdOrCtrl+Shift+D'),
       { type: 'separator' },
       cmd('menu.hiddenAll', 'toggleHiddenAll', 'CmdOrCtrl+.'),
       { ...cmd('menu.hidden', 'toggleHidden'), type: 'checkbox', checked: settings.showHidden },

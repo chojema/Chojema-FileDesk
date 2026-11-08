@@ -70,13 +70,19 @@ export interface TransferRequest {
   sources: string[]
   destDir: string
   policy: ConflictPolicy
+  /** Language of copy names when copying into the source folder (set by the main process). */
+  lang?: Lang
 }
 
 export interface TransferResult {
   done: number
   skipped: number
   errors: { path: string; message: string }[]
+  /** Copies made in the source folder under a new name. */
+  created?: string[]
 }
+
+export interface FileClipboard { paths: string[]; cut: boolean }
 
 export interface Progress {
   current: string
@@ -172,6 +178,10 @@ export interface FileDeskApi {
   dirSize(path: string): Promise<number>
   onProgress(cb: (p: Progress) => void): () => void
   onMenu(cb: (cmd: string) => void): () => void
+  /** Files on the OS clipboard (Explorer/Finder format); cut is set by Explorer's Cut. */
+  readFileClipboard(): Promise<FileClipboard>
+  /** Puts local files on the OS clipboard; an empty list clears it. */
+  writeFileClipboard(paths: string[], cut: boolean): Promise<void>
   /** A drive or volume was added or removed. */
   onPlacesChanged(cb: () => void): () => void
   setMenuLang(lang: Lang): Promise<void>

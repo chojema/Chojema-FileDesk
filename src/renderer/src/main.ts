@@ -1,6 +1,6 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Place, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ColumnWidths, ConflictPolicy, ContextItem, FileClipboard, FileEntry, Lang, PaneSide, Place, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
@@ -116,6 +116,8 @@ async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): P
         item('rename', 'menu.rename', 'F2'),
         item('trash', remote ? 'server.remoteDeleteTitle' : 'menu.trash', 'F8'),
         sep,
+        item('copyFiles', 'ctx.copy', 'CmdOrCtrl+C'),
+        item('duplicate', 'fx.duplicate', 'CmdOrCtrl+D'),
         item('copyPath', 'tb.copyPath', 'CmdOrCtrl+Shift+C'),
         sep,
         item('mkdir', 'menu.newFolder', 'F7'),
@@ -125,6 +127,7 @@ async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): P
         item('mkdir', 'menu.newFolder', 'F7'),
         item('refresh', 'menu.refresh', 'CmdOrCtrl+R'),
         sep,
+        item('paste', 'ctx.paste', 'CmdOrCtrl+V'),
         item('copyFolderPath', 'ctx.copyFolderPath'),
         item('copyList', 'tb.copyList'),
         sep,
@@ -135,7 +138,7 @@ async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): P
     ? [
         item('copy', 'menu.copy', 'F5'),
         item('move', 'menu.move', 'F6'),
-        ...(api.platform === 'win32' ? [item('rename', 'menu.rename', 'F2')] : []),
+        ...(api.platform === 'win32' ? [item('rename', 'menu.rename', 'F2'), item('duplicate', 'fx.duplicate', 'Ctrl+D')] : []),
         item('copyPath', 'tb.copyPath', 'CmdOrCtrl+Shift+C'),
         item('reveal', 'menu.reveal'),
         item('refresh', 'menu.refresh', 'CmdOrCtrl+R')
@@ -156,7 +159,7 @@ async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): P
     window.setTimeout(() => { void panes.left.refresh(); void panes.right.refresh() }, 600)
   }
   if (result.id === 'paste' && result.paths?.length) {
-    await guarded(() => executeTransfer('copy', result.paths!, pane.path))
+    await guarded(async () => { await executeTransfer('copy', result.paths!, pane.path) })
   } else if (result.id) await run(result.id)
 }
 
@@ -175,6 +178,11 @@ const DRAG_TYPE = 'application/x-filedesk-paths'
 function dirKey(p: string): string {
   const k = p.replace(/[\\/]+$/, '')
   return isRemotePath(p) || api.platform === 'linux' ? k : k.toLowerCase()
+}
+
+function baseName(p: string): string {
+  const s = isRemotePath(p) ? remotePath(p).path : p
+  return s.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || s
 }
 
 function parentDir(p: string): string {
@@ -212,7 +220,7 @@ function wireDrop(pane: Pane, root: HTMLElement): void {
     sources = sources.filter((s) => dirKey(parentDir(s)) !== dirKey(destDir) && dirKey(s) !== dirKey(destDir))
     if (!sources.length) return
     host.activate(pane)
-    void guarded(() => executeTransfer(moveKey(e) ? 'move' : 'copy', sources, destDir))
+    void guarded(async () => { await executeTransfer(moveKey(e) ? 'move' : 'copy', sources, destDir) })
   })
 }
 
@@ -358,7 +366,7 @@ async function transfer(op: 'copy' | 'move'): Promise<void> {
 }
 
 /** Copies or moves sources into destDir after asking about name conflicts, then refreshes both panes. */
-async function executeTransfer(op: 'copy' | 'move', sources: string[], destDir: string): Promise<void> {
+async function executeTransfer(op: 'copy' | 'move', sources: string[], destDir: string): Promise<TransferResult | undefined> {
   let policy: ConflictPolicy = 'skip'
   const conflicts = await api.findConflicts(sources, destDir)
   if (conflicts.length) {
@@ -380,7 +388,44 @@ async function executeTransfer(op: 'copy' | 'move', sources: string[], destDir: 
     api.transfer({ op, sources, destDir, policy })
   )
   await Promise.all([panes.left.refresh(), panes.right.refresh()])
+  // Put the cursor on a copy made in place, as Explorer and Finder select it.
+  const made = result.created?.[0]
+  if (made && dirKey(destDir) === dirKey(active.path)) await active.load(active.path, { push: false, focusName: baseName(made) })
   await reportErrors(result)
+  return result
+}
+
+// ---------- file clipboard (Ctrl+C/X/V, Cmd+C/V, Cmd+Option+V) ----------
+
+// Server files cannot go on the OS clipboard, so the app also keeps its own copy.
+let fileClip: FileClipboard | null = null
+const sameList = (a: string[], b: string[]): boolean => a.length === b.length && a.every((p, i) => dirKey(p).normalize('NFC') === dirKey(b[i]).normalize('NFC'))
+
+async function clipFiles(cut: boolean): Promise<void> {
+  const paths = active.targets().map(e => e.path)
+  if (!paths.length) return
+  fileClip = { paths, cut }
+  // Server files clear the OS clipboard so a later paste does not pick up older files.
+  await api.writeFileClipboard(paths.some(isRemotePath) ? [] : paths, cut)
+  toast(t(cut ? 'toast.filesCut' : 'toast.filesCopied', { n: paths.length }))
+}
+
+async function pasteFiles(forceMove = false): Promise<void> {
+  const os = await api.readFileClipboard()
+  let clip: FileClipboard | null = null
+  if (os.paths.length && !(fileClip && sameList(os.paths, fileClip.paths))) clip = os
+  else if (fileClip) clip = fileClip
+  if (!clip) return
+  const move = clip.cut || forceMove
+  const result = await executeTransfer(move ? 'move' : 'copy', clip.paths, active.path)
+  // A cut is pasted once, as in Explorer.
+  if (move && result) { fileClip = null; if (os.paths.length) await api.writeFileClipboard([], false) }
+}
+
+/** Copies the selection in place right away (Ctrl+D / Cmd+D). */
+async function duplicateFiles(): Promise<void> {
+  const paths = active.targets().map(e => e.path)
+  if (paths.length) await executeTransfer('copy', paths, active.path)
 }
 
 async function makeDir(): Promise<void> {
@@ -624,6 +669,11 @@ const commands: Record<string, () => void | Promise<void>> = {
     if (!res.ok) await alertBox(t('dlg.error.title'), t('err.terminal'), `${active.path}\n${res.error ?? ''}`)
   },
   copyPath: copyPaths,
+  copyFiles: () => clipFiles(false),
+  cutFiles: () => clipFiles(true),
+  paste: () => pasteFiles(),
+  pasteMove: () => pasteFiles(true),
+  duplicate: duplicateFiles,
   copyList: copyList,
   history: () => openHistory(active),
   favorites: () => openFavorites(active)
@@ -724,9 +774,14 @@ function onKey(e: KeyboardEvent): void {
   else if (mod && k.toLowerCase() === 'u') cmd = 'swap'
   else if (mod && (k === '=' || k === '+')) cmd = 'sameDir'
   else if (mod && k.toLowerCase() === 'l') cmd = 'focusPath'
-  else if (mod && e.shiftKey && k.toLowerCase() === 'c') cmd = 'copyPath'
+  else if (mod && e.shiftKey && e.code === 'KeyC') cmd = 'copyPath'
+  // Physical keys, so the shortcuts also work with a Korean input source.
+  else if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyC') cmd = 'copyFiles'
+  else if (!isMac && mod && !e.shiftKey && !e.altKey && e.code === 'KeyX') cmd = 'cutFiles'
+  else if (mod && !e.shiftKey && e.code === 'KeyV') cmd = isMac && e.altKey ? 'pasteMove' : 'paste'
+  else if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyD') cmd = 'duplicate'
+  else if (mod && e.shiftKey && e.code === 'KeyD') cmd = 'favorites'
   else if (e.altKey && !mod && k === 'ArrowDown') cmd = 'history'
-  else if (mod && !e.shiftKey && k.toLowerCase() === 'd') cmd = 'favorites'
   else if (mod && !e.shiftKey && k.toLowerCase() === 'k') cmd = 'connect'
   else if (isMac && e.metaKey && e.shiftKey && k.toLowerCase() === 'n') cmd = 'mkdir'
   if (cmd) {

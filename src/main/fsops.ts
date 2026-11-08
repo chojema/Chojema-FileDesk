@@ -3,6 +3,7 @@ import { promises as fsp, existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
+import { copyName } from '@shared/copy-name'
 import type {
   DirListing,
   DiskSpace,
@@ -198,7 +199,7 @@ async function moveOne(src: string, dest: string): Promise<void> {
 }
 
 export async function transfer(req: TransferRequest, onProgress: (p: Progress) => void): Promise<TransferResult> {
-  const result: TransferResult = { done: 0, skipped: 0, errors: [] }
+  const result: TransferResult = { done: 0, skipped: 0, errors: [], created: [] }
   const total = req.sources.length
   for (let i = 0; i < total; i++) {
     const src = req.sources[i]
@@ -207,7 +208,15 @@ export async function transfer(req: TransferRequest, onProgress: (p: Progress) =
     onProgress({ current: name, index: i, total })
     try {
       if (samePath(src, dest)) {
-        result.skipped++
+        // Copying into its own folder makes a copy under a new name, as Explorer and Finder do.
+        if (req.op !== 'copy') { result.skipped++; continue }
+        const isDir = (await fsp.lstat(src)).isDirectory()
+        let n = 1, target = ''
+        do target = path.join(req.destDir, copyName(name, isDir, n++, process.platform, req.lang ?? 'en'))
+        while (existsSync(target))
+        await fsp.cp(src, target, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true, verbatimSymlinks: true })
+        result.created!.push(target)
+        result.done++
         continue
       }
       if (isInside(req.destDir, src) || samePath(req.destDir, src)) {

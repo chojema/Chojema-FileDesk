@@ -44,8 +44,8 @@ const ko = {
   "update.download": "다운로드 후 설치 파일 열기",
   "update.release": "릴리스 페이지 보기",
   "update.downloading": "업데이트 다운로드 중…",
-  "update.installHint": "운영체제에 맞는 파일을 내려받아 SHA-256을 확인한 뒤 열고, 이 앱은 자동으로 종료됩니다. Windows는 설치를 완료하고, macOS는 새 앱을 Applications 폴더로 복사하세요.",
-  "update.opened": "검증한 설치 파일을 열었습니다. 앱을 종료합니다.",
+  "update.installHint": "운영체제에 맞는 파일을 내려받아 SHA-256을 확인한 뒤 열고, 이 앱은 자동으로 종료됩니다. Windows는 작업 표시줄 고정을 유지한 채 기존 위치에 업데이트됩니다. macOS는 새 앱을 Applications 폴더로 복사하세요.",
+  "update.opened": "검증한 업데이트를 시작했습니다. 앱을 종료합니다.",
   "update.noAsset": "이 운영체제와 아키텍처에 맞는 파일이 없습니다. 릴리스 페이지에서 확인하세요.",
   "about.links": "웹사이트와 소식",
   'app.name': 'Chojema FileDesk',
@@ -79,6 +79,8 @@ const ko = {
   'popup.remove': '목록에서 제거 (Delete)',
   'toast.listCopied': '파일과 폴더 목록 {n}개를 복사했습니다',
   'toast.listEmpty': '복사할 항목이 없습니다',
+  'toast.filesCopied': '항목 {n}개를 복사했습니다',
+  'toast.filesCut': '항목 {n}개를 잘라냈습니다',
   'key.F2': '이름 바꾸기',
   'key.F3': '열기',
   'key.F5': '복사',
@@ -176,7 +178,7 @@ const ko = {
   'fx.copySuffix': '복사본',
   'fx.archive': '아카이브',
   'shortcuts.body':
-    'Tab  패널 전환\nEnter  열기\nBackspace  상위 폴더\nSpace / Insert  선택 토글\n{mod}+A  모두 선택\nF2  이름 바꾸기\nF5  복사 · F6  이동\nF7  새 폴더 · F8 / Delete  삭제\n{mod}+R  새로 고침\n{mod}+L  경로 입력\nAlt+↓  방문했던 폴더\n{mod}+D  즐겨찾기 폴더\n{mod}+Shift+C  경로 복사\n{mod}+.  숨김 항목 모두 표시/감추기\n{mod}+U  좌우 패널 바꾸기\n{mod}+=  반대쪽을 같은 폴더로'
+    'Tab  패널 전환\nEnter  열기\nBackspace  상위 폴더\nSpace / Insert  선택 토글\n{mod}+A  모두 선택\nF2  이름 바꾸기\nF5  복사 · F6  이동\nF7  새 폴더 · F8 / Delete  삭제\n{mod}+R  새로 고침\n{mod}+L  경로 입력\nAlt+↓  방문했던 폴더\n{mod}+Shift+D  즐겨찾기 폴더\n{mod}+C / {mod}+V  파일 복사 / 붙여넣기\n{mod}+D  복제(바로 복사본 만들기)\n{mod}+Shift+C  경로 복사\n{mod}+.  숨김 항목 모두 표시/감추기\n{mod}+U  좌우 패널 바꾸기\n{mod}+=  반대쪽을 같은 폴더로'
 }
 
 type Dict = typeof ko
@@ -226,8 +228,8 @@ const en: Dict = {
   "update.download": "Download and Open Installer",
   "update.release": "View Release",
   "update.downloading": "Downloading update…",
-  "update.installHint": "The matching download is verified with SHA-256 and opened, then FileDesk quits. Complete the installer on Windows. On macOS, copy the new app to Applications.",
-  "update.opened": "The verified installer is open. FileDesk will now quit.",
+  "update.installHint": "The matching download is verified with SHA-256 and opened, then FileDesk quits. On Windows it updates in place and keeps taskbar pins. On macOS, copy the new app to Applications.",
+  "update.opened": "The verified update has started. FileDesk will now quit.",
   "update.noAsset": "No matching artifact is available for this OS/architecture. Visit the release page.",
   "about.links": "Websites and news",
   'app.name': 'Chojema FileDesk',
@@ -261,6 +263,8 @@ const en: Dict = {
   'popup.remove': 'Remove from list (Delete)',
   'toast.listCopied': 'List of {n} items copied',
   'toast.listEmpty': 'Nothing to copy',
+  'toast.filesCopied': '{n} items copied',
+  'toast.filesCut': '{n} items cut',
   'key.F2': 'Rename',
   'key.F3': 'Open',
   'key.F5': 'Copy',
@@ -358,7 +362,7 @@ const en: Dict = {
   'fx.copySuffix': 'copy',
   'fx.archive': 'Archive',
   'shortcuts.body':
-    'Tab  Switch pane\nEnter  Open\nBackspace  Parent folder\nSpace / Insert  Toggle selection\n{mod}+A  Select all\nF2  Rename\nF5  Copy · F6  Move\nF7  New folder · F8 / Delete  Delete\n{mod}+R  Refresh\n{mod}+L  Edit path\nAlt+↓  Visited folders\n{mod}+D  Favorite folders\n{mod}+Shift+C  Copy path\n{mod}+.  Show/hide all hidden items\n{mod}+U  Swap panes\n{mod}+=  Same folder in other pane'
+    'Tab  Switch pane\nEnter  Open\nBackspace  Parent folder\nSpace / Insert  Toggle selection\n{mod}+A  Select all\nF2  Rename\nF5  Copy · F6  Move\nF7  New folder · F8 / Delete  Delete\n{mod}+R  Refresh\n{mod}+L  Edit path\nAlt+↓  Visited folders\n{mod}+Shift+D  Favorite folders\n{mod}+C / {mod}+V  Copy / paste files\n{mod}+D  Duplicate in place\n{mod}+Shift+C  Copy path\n{mod}+.  Show/hide all hidden items\n{mod}+U  Swap panes\n{mod}+=  Same folder in other pane'
 }
 
 const dicts: Record<Lang, Dict> = { ko, en }

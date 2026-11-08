@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type * as Local from './fsops'
 import { RemoteManager } from './remote'
 import { isRemotePath, remoteName, remotePath, remoteUrl } from '@shared/remote-path'
+import { copyName } from '@shared/copy-name'
 import type { DirListing, FileEntry, Progress, Result, TransferRequest, TransferResult } from '@shared/types'
 
 const message = (e: unknown): string => e instanceof Error ? e.message : String(e)
@@ -164,7 +165,7 @@ export class FileService {
 
   async transfer(req: TransferRequest, progress: (p: Progress) => void): Promise<TransferResult> {
     if (!isRemotePath(req.destDir) && req.sources.every(p => !isRemotePath(p))) return this.local.transfer(req, progress)
-    const out: TransferResult = { done: 0, skipped: 0, errors: [] }
+    const out: TransferResult = { done: 0, skipped: 0, errors: [], created: [] }
     if (this.transferring) return { ...out, errors: [{ path: req.destDir, message: 'Another transfer is in progress' }] }
     this.transferring = true
     try {
@@ -174,7 +175,17 @@ export class FileService {
         const dest = joinItem(req.destDir, itemName(src))
         progress({ current: itemName(src), index: i, total: req.sources.length })
         try {
-          if (equal(src, dest)) { out.skipped++; continue }
+          if (equal(src, dest)) {
+            if (req.op !== 'copy') { out.skipped++; continue }
+            const info = await this.stat(src)
+            let n = 1, target = ''
+            do target = joinItem(req.destDir, copyName(itemName(src), !!info?.isDir, n++, process.platform, req.lang ?? 'en'))
+            while (await this.stat(target))
+            await this.copy(src, target, (name, bytes) => progress({ current: name, index: i, total: req.sources.length, bytes }))
+            out.created!.push(target)
+            out.done++
+            continue
+          }
           if (equal(src, req.destDir) || inside(req.destDir, src)) { out.errors.push({ path: src, message: 'into-self' }); continue }
           const existing = await this.stat(dest)
           if (existing && req.policy === 'skip') { out.skipped++; continue }

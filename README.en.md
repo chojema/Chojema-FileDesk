@@ -25,6 +25,8 @@ On macOS, copy the app from the DMG to Applications. If the first launch is bloc
 | `Space` / `Insert` | Toggle selection |
 | `F2` | Rename (or click a selected name again, slowly) |
 | `F5` / `F6` | Copy / move to the other pane |
+| `Ctrl/⌘+C` / `Ctrl/⌘+V` | Copy / paste files (`Ctrl+X` cuts on Windows, `⌘+⌥+V` moves on macOS) |
+| `Ctrl/⌘+D` | Duplicate in place |
 | `F7` | New folder |
 | `F8` / `Delete` | Delete |
 | `Ctrl/⌘+L` | Enter path |

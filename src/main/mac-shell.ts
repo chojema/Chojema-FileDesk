@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
 import { execFile } from 'node:child_process'
-import { existsSync, promises as fs } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { translate, type MsgKey } from '@shared/i18n'
 import type { ContextItem, Lang, ShellMenuResult } from '@shared/types'
@@ -46,16 +46,6 @@ async function unique(dir: string, stem: string, ext: string): Promise<string> {
   }
 }
 
-async function duplicate(paths: string[], lang: Lang): Promise<void> {
-  const word = translate(lang, 'fx.copySuffix')
-  for (const p of paths) {
-    const stat = await fs.lstat(p)
-    const ext = stat.isDirectory() ? '' : path.extname(p)
-    const target = await unique(path.dirname(p), `${path.basename(p, ext)} ${word}`, ext)
-    await fs.cp(p, target, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true, force: false })
-  }
-}
-
 async function compress(paths: string[], lang: Lang): Promise<void> {
   const dir = path.dirname(paths[0])
   if (paths.length === 1) {
@@ -81,8 +71,8 @@ const PASTEBOARD = `function run(argv) {
   return JSON.stringify(out)
 }`
 
-/** Puts files on the pasteboard the way Finder does, so Finder and other apps can paste them. */
-async function copyFiles(paths: string[]): Promise<void> {
+/** Puts files on the pasteboard the way Finder does (an empty list clears it). */
+export async function copyFiles(paths: string[]): Promise<void> {
   await run('osascript', ['-l', 'JavaScript', '-e', PASTEBOARD, ...paths])
 }
 
@@ -133,11 +123,11 @@ export function showMacMenu(win: BrowserWindow, req: MacMenuRequest, lang: Lang,
           { label: t('fx.getInfo'), click: act(() => getInfo(paths).then(() => undefined)) },
           ...(paths.length === 1 ? [{ label: t('menu.rename'), click: () => done({ id: 'rename' }) }] : []),
           { label: paths.length === 1 ? t('fx.compressOne', { name }) : t('fx.compressMany', { n: paths.length }), click: act(() => compress(paths, lang), true) },
-          { label: t('fx.duplicate'), click: act(() => duplicate(paths, lang), true) },
+          { label: t('fx.duplicate'), accelerator: 'Cmd+D', registerAccelerator: false, click: () => done({ id: 'duplicate' }) },
           { label: t('fx.alias'), click: act(() => makeAlias(paths).then(() => undefined), true) },
           { label: paths.length === 1 ? t('fx.quickLookOne', { name }) : t('fx.quickLook'), click: act(() => win.previewFile(paths[0])) },
           { type: 'separator' },
-          { label: t('fx.copy'), click: act(() => copyFiles(paths)) },
+          { label: t('fx.copy'), accelerator: 'Cmd+C', registerAccelerator: false, click: act(() => copyFiles(paths)) },
           { role: 'shareMenu', label: t('fx.share'), sharingItem: { filePaths: paths } }
         )
       } else {

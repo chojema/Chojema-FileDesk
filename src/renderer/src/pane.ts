@@ -673,7 +673,7 @@ export class Pane {
     const fav = this.host.isFavorite(this.path)
     this.favBtn.replaceChildren(icon(fav ? 'starFill' : 'star', ''))
     this.favBtn.classList.toggle('on', fav)
-    this.favBtn.title = `${t('tb.favorites')} (${isMac ? '⌘D' : 'Ctrl+D'})`
+    this.favBtn.title = `${t('tb.favorites')} (${isMac ? '⇧⌘D' : 'Ctrl+Shift+D'})`
     this.historyBtn.title = `${t('tb.history')} (${isMac ? '⌥↓' : 'Alt+↓'})`
     this.disconnectBtn.title = t('server.disconnect')
     this.disconnectBtn.setAttribute('aria-label', t('server.disconnect'))

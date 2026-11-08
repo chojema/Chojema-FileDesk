@@ -12,9 +12,9 @@ import { createConnections } from './connections'
 import { checkUpdate, downloadUpdate } from './updates'
 import { APP_LINKS } from '@shared/links'
 import { isRemotePath } from '@shared/remote-path'
-import type { ConnectRequest, ContextItem, ShellMenuRequest, ShellMenuResult } from '@shared/types'
-import { showWinMenu, startWinHelper, stopWinHelper, winHelperReady } from './win-helper'
-import { showMacMenu } from './mac-shell'
+import type { ConnectRequest, ContextItem, FileClipboard, ShellMenuRequest, ShellMenuResult } from '@shared/types'
+import { setWinClipboardFiles, showWinMenu, startWinHelper, stopWinHelper, winClipboardFiles, winHelperReady } from './win-helper'
+import { clipboardFiles, copyFiles, showMacMenu } from './mac-shell'
 import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
 import dragIconPath from '../../resources/icon-256.png?asset'
 
@@ -163,7 +163,21 @@ function registerIpc(): void {
   ipcMain.handle('fs:space', (_e, p: string) => isRemotePath(p) ? null : fsops.diskSpace(p))
   ipcMain.handle('fs:resolve', (_e, input: string, base: string) => files.resolve(input, base))
   ipcMain.handle('fs:conflicts', (_e, sources: string[], dest: string) => files.conflicts(sources, dest))
-  ipcMain.handle('fs:transfer', (_e, req: TransferRequest) => files.transfer(req, progress))
+  ipcMain.handle('fs:transfer', (_e, req: TransferRequest) => files.transfer({ ...req, lang: settings.lang }, progress))
+  ipcMain.handle('clip:read', async (): Promise<FileClipboard> => {
+    try {
+      if (process.platform === 'darwin') return { paths: await clipboardFiles(), cut: false }
+      if (process.platform === 'win32' && winHelperReady()) return await winClipboardFiles()
+    } catch { /* fall back to the app's own clipboard */ }
+    return { paths: [], cut: false }
+  })
+  ipcMain.handle('clip:write', async (_e, paths: string[], cut: boolean) => {
+    if (!Array.isArray(paths) || paths.some(p => typeof p !== 'string' || isRemotePath(p))) return
+    try {
+      if (process.platform === 'darwin') await copyFiles(paths)
+      else if (process.platform === 'win32' && winHelperReady()) await setWinClipboardFiles(paths, !!cut)
+    } catch { /* the app keeps its own clipboard */ }
+  })
   ipcMain.handle('fs:mkdir', (_e, parent: string, name: string) => files.mkdir(parent, name))
   ipcMain.handle('fs:rename', (_e, p: string, name: string) => files.rename(p, name))
   ipcMain.handle('fs:trash', (_e, paths: string[]) => files.trash(paths, progress))

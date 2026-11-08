@@ -54,6 +54,8 @@ const api: FileDeskApi = {
     ipcRenderer.on('menu', h)
     return () => ipcRenderer.removeListener('menu', h)
   },
+  readFileClipboard: () => ipcRenderer.invoke('clip:read'),
+  writeFileClipboard: (paths, cut) => ipcRenderer.invoke('clip:write', paths, cut),
   onPlacesChanged: (cb) => {
     const h = () => cb()
     ipcRenderer.on('places:changed', h)
