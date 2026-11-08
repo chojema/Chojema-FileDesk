@@ -24,6 +24,13 @@ let settings: Settings
 const servers = createConnections(() => settings?.lang ?? 'ko')
 const files = new FileService(fsops, servers.manager)
 
+/** Rebuilds the app menu; the Server menu lists saved servers and marks connected ones. */
+function refreshMenu(s: Settings = settings): void {
+  if (!win) return
+  const connected = new Set(servers.manager.connections().map(c => c.id))
+  buildMenu(win, s, connected.size > 0, servers.profiles().map(p => ({ id: p.id, name: p.name, connected: connected.has(p.id) })))
+}
+
 function createWindow(): void {
   const stateFile = path.join(app.getPath('userData'), 'window-state.json')
   const state = fitWindow(settings.windowStart === 'restore' ? readWindowState(stateFile) : undefined,
@@ -88,7 +95,7 @@ function createWindow(): void {
     ]).popup({ window })
   })
 
-  buildMenu(win, settings, servers.manager.connections().length > 0)
+  refreshMenu()
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -107,11 +114,11 @@ function registerIpc(): void {
     const s = normalizeSettings(value)
     settings = s
     nativeTheme.themeSource = s.theme
-    if (win) buildMenu(win, s, servers.manager.connections().length > 0)
+    refreshMenu(s)
     await saveSettings(s)
   })
   ipcMain.handle('menu:lang', (_e, lang: Lang) => {
-    if (win) buildMenu(win, { ...settings, lang }, servers.manager.connections().length > 0)
+    refreshMenu({ ...settings, lang })
   })
   ipcMain.handle('fs:list', (_e, p: string) => files.list(p))
   ipcMain.handle('fs:places', async () => [
@@ -162,18 +169,18 @@ function registerIpc(): void {
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
   })
   ipcMain.handle('server:profiles', () => servers.profiles())
-  ipcMain.handle('server:remove', (_e, id: string) => servers.remove(id))
+  ipcMain.handle('server:remove', async (_e, id: string) => { await servers.remove(id); refreshMenu() })
   ipcMain.handle('server:connect', async (_e, req: ConnectRequest) => {
     try {
       const value = await servers.connect(req)
-      if (win) buildMenu(win, settings, true)
+      refreshMenu()
       return { ok: true, value }
     }
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
   })
   ipcMain.handle('server:disconnect', async (_e, root: string) => {
     await servers.manager.disconnect(root)
-    if (win) buildMenu(win, settings, servers.manager.connections().length > 0)
+    refreshMenu()
   })
   // System file-type icons. Server files use a local placeholder with the same extension.
   ipcMain.handle('fs:icon', async (_e, p: unknown) => {

@@ -4,7 +4,9 @@ import type { Settings } from '@shared/types'
 
 const isMac = process.platform === 'darwin'
 
-export function buildMenu(win: BrowserWindow, settings: Settings, connected = false): void {
+export interface SavedServerItem { id: string; name: string; connected: boolean }
+
+export function buildMenu(win: BrowserWindow, settings: Settings, connected = false, saved: SavedServerItem[] = []): void {
   const t = (k: MsgKey) => translate(settings.lang, k)
   // Keyboard handling lives in the renderer; accelerators here are shown for reference only.
   const cmd = (label: MsgKey, id: string, accelerator?: string): MenuItemConstructorOptions => ({
@@ -95,7 +97,19 @@ export function buildMenu(win: BrowserWindow, settings: Settings, connected = fa
     label: t('menu.server'),
     submenu: [
       { ...cmd('server.connect', 'connect', 'CmdOrCtrl+K'), id: 'server-connect' },
-      { ...cmd('server.disconnect', 'disconnect'), id: 'server-disconnect', enabled: connected }
+      { ...cmd('server.disconnect', 'disconnect'), id: 'server-disconnect', enabled: connected },
+      ...(saved.length
+        ? ([
+            { type: 'separator' },
+            { label: t('server.saved'), enabled: false },
+            ...saved.map((s): MenuItemConstructorOptions => ({
+              label: s.name,
+              type: 'checkbox',
+              checked: s.connected,
+              click: () => win.webContents.send('menu', `server:${s.id}`)
+            }))
+          ] as MenuItemConstructorOptions[])
+        : [])
     ]
   })
 

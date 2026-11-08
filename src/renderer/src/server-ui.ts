@@ -5,10 +5,10 @@ import { api, el, t } from './util'
 const defaults = (): ServerProfile => ({ id: '', name: '', protocol: 'ftps', host: '', port: 21, username: '', remoteDir: '', privateKeyPath: '', rememberPassword: false })
 const portFor = (p: string): number => p === 'sftp' ? 22 : p === 'ftps-implicit' ? 990 : 21
 
-export async function connectDialog(): Promise<{ connection: ServerConnection; side: PaneSide } | null> {
+export async function connectDialog(initial?: { profileId?: string; side?: PaneSide }): Promise<{ connection: ServerConnection; side: PaneSide } | null> {
   let profiles = await api.serverProfiles()
-  let profile = defaults()
-  let password = '', passphrase = '', saveProfile = true, side: PaneSide = 'right'
+  let profile = profiles.find(p => p.id === initial?.profileId) || defaults()
+  let password = '', passphrase = '', saveProfile = true, side: PaneSide = initial?.side || 'right'
   while (true) {
     const saved = el('select', { id: 'server-saved' })
     saved.append(el('option', { value: '', textContent: t('server.new') }))
@@ -74,7 +74,8 @@ export async function connectDialog(): Promise<{ connection: ServerConnection; s
       { id: 'remove', label: t('server.remove') },
       { id: 'connect', label: t('server.connectNow'), kind: 'primary' }
     ], cancelId: 'cancel' })
-    if (profiles.length) saved.focus()
+    if (profile.id && !profile.hasPassword) (profile.privateKeyPath ? phrase : secret).focus()
+    else if (profiles.length) saved.focus()
     else host.focus()
     const result = await pending
     if (result === 'cancel') return null
@@ -95,4 +96,24 @@ export async function connectDialog(): Promise<{ connection: ServerConnection; s
     if (connected.ok && connected.value) return { connection: connected.value, side }
     await alertBox(t('dlg.error.title'), connected.error || '')
   }
+}
+
+/**
+ * Connects a saved server from the Server menu. Uses the saved password, key or anonymous login
+ * directly; otherwise, or when that fails, opens the connection dialog with the server selected.
+ */
+export async function connectSaved(id: string, side: PaneSide): Promise<{ connection: ServerConnection; side: PaneSide } | null> {
+  const open = (await api.serverConnections()).find(c => c.id === id)
+  if (open) return { connection: open, side }
+  const profile = (await api.serverProfiles()).find(p => p.id === id)
+  if (!profile) return null
+  if (profile.hasPassword || profile.privateKeyPath || profile.username === 'anonymous') {
+    const progress = busy(t('server.connecting'))
+    let connected
+    try { connected = await api.connectServer({ profile, password: '', passphrase: '', saveProfile: true }) }
+    finally { progress.close() }
+    if (connected.ok && connected.value) return { connection: connected.value, side }
+    await alertBox(t('dlg.error.title'), connected.error || '')
+  }
+  return connectDialog({ profileId: id, side })
 }

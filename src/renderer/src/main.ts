@@ -1,13 +1,13 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
 import { formatSize } from './util'
 import { APP_LINKS } from '@shared/links'
 import { isRemotePath, remotePath } from '@shared/remote-path'
-import { connectDialog } from './server-ui'
+import { connectDialog, connectSaved } from './server-ui'
 import { showUpdate } from './update-ui'
 
 let settings: Settings
@@ -534,7 +534,15 @@ async function showAbout(): Promise<void> {
 }
 
 async function connectServer(): Promise<void> {
-  const result = await connectDialog()
+  await showConnection(await connectDialog({ side: active.side }))
+}
+
+/** Opens a saved server from the Server menu in the active pane. */
+async function connectSavedServer(id: string): Promise<void> {
+  await showConnection(await connectSaved(id, active.side))
+}
+
+async function showConnection(result: { connection: ServerConnection; side: PaneSide } | null): Promise<void> {
   if (!result) return
   const pane = panes[result.side]
   if (!isRemotePath(pane.path)) lastLocal[result.side] = pane.path
@@ -657,7 +665,7 @@ async function run(cmd: string): Promise<void> {
   if (cmd === 'rename' && active.isEditing()) return
   // A command issued while a name is being edited applies the edit first.
   for (const p of [panes.left, panes.right]) await p.finishRename(true)
-  try { await commands[cmd]?.() }
+  try { await (cmd.startsWith('server:') ? connectSavedServer(cmd.slice(7)) : commands[cmd]?.()) }
   catch (e) { await alertBox(t('dlg.error.title'), e instanceof Error ? e.message : String(e)) }
   if (!isModalOpen() && !active.isEditing()) active.focus()
 }
