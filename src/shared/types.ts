@@ -172,6 +172,8 @@ export interface FileDeskApi {
   dirSize(path: string): Promise<number>
   onProgress(cb: (p: Progress) => void): () => void
   onMenu(cb: (cmd: string) => void): () => void
+  /** A drive or volume was added or removed. */
+  onPlacesChanged(cb: () => void): () => void
   setMenuLang(lang: Lang): Promise<void>
   openLink(url: string): Promise<void>
   checkUpdate(): Promise<Result<UpdateInfo>>

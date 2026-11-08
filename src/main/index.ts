@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, nativeImage, nativeTheme, screen, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import path from 'node:path'
-import { existsSync, promises as fs } from 'node:fs'
+import { existsSync, promises as fs, watch } from 'node:fs'
 import { translate } from '@shared/i18n'
 import type { Lang, Settings, TransferRequest } from '@shared/types'
 import * as fsops from './fsops'
@@ -29,6 +29,35 @@ function refreshMenu(s: Settings = settings): void {
   if (!win) return
   const connected = new Set(servers.manager.connections().map(c => c.id))
   buildMenu(win, s, connected.size > 0, servers.profiles().map(p => ({ id: p.id, name: p.name, connected: connected.has(p.id) })))
+}
+
+/** Tells the renderer to reread the drive list; bursts of OS events collapse into one update. */
+let placesTimer: NodeJS.Timeout | undefined
+function placesChanged(): void {
+  clearTimeout(placesTimer)
+  placesTimer = setTimeout(() => win?.webContents.send('places:changed'), 400)
+}
+
+/**
+ * Drive changes come from the OS, without polling: WM_DEVICECHANGE on Windows and the /Volumes
+ * folder on macOS. Windows also rechecks when the window is activated, since mapping a network
+ * drive does not always send the message.
+ */
+function watchDrives(w: BrowserWindow): void {
+  if (process.platform === 'win32') {
+    const WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004
+    w.hookWindowMessage(WM_DEVICECHANGE, (wParam) => {
+      const event = wParam.length >= 8 ? Number(wParam.readBigUInt64LE(0)) : wParam.readUInt32LE(0)
+      if (event === DBT_DEVICEARRIVAL || event === DBT_DEVICEREMOVECOMPLETE) placesChanged()
+    })
+    w.on('focus', placesChanged)
+  } else if (process.platform === 'darwin') {
+    try {
+      const watcher = watch('/Volumes', placesChanged)
+      watcher.on('error', () => watcher.close())
+      w.on('closed', () => watcher.close())
+    } catch { /* no /Volumes */ }
+  }
 }
 
 function createWindow(): void {
@@ -102,6 +131,7 @@ function createWindow(): void {
   } else {
     win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+  watchDrives(win)
   win.on('closed', () => (win = null))
 }
 

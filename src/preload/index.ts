@@ -53,6 +53,11 @@ const api: FileDeskApi = {
     const h = (_e: IpcRendererEvent, c: string) => cb(c)
     ipcRenderer.on('menu', h)
     return () => ipcRenderer.removeListener('menu', h)
+  },
+  onPlacesChanged: (cb) => {
+    const h = () => cb()
+    ipcRenderer.on('places:changed', h)
+    return () => ipcRenderer.removeListener('places:changed', h)
   }
 }
 

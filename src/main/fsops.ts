@@ -124,11 +124,14 @@ export async function places(labels: Record<'home' | 'desktop' | 'documents' | '
   add('downloads', labels.downloads, app.getPath('downloads'), 'folder')
 
   if (isWin) {
-    for (let c = 65; c <= 90; c++) {
-      const letter = String.fromCharCode(c)
-      const root = `${letter}:\\`
-      if (existsSync(root)) add(`drive-${letter}`, `${letter}:`, root, 'drive')
-    }
+    // Checked in parallel off the main thread. Missing letters fail at once; a mapped network
+    // drive that does not answer within a second is still listed, as Explorer does.
+    const letters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))
+    const found = await Promise.all(letters.map(letter => Promise.race([
+      fsp.access(`${letter}:\\`).then(() => true, () => false),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(true), 1000))
+    ])))
+    letters.forEach((letter, i) => { if (found[i]) out.push({ id: `drive-${letter}`, label: `${letter}:`, path: `${letter}:\\`, kind: 'drive' }) })
   } else {
     add('root', '/', '/', 'volume')
     if (process.platform === 'darwin') {

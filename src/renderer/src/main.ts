@@ -1,6 +1,6 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ColumnWidths, ConflictPolicy, ContextItem, FileEntry, Lang, PaneSide, Place, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
@@ -816,10 +816,23 @@ function initResize(): void {
   })
 }
 
+let places: Place[] = []
+let placesRequest = 0
 async function loadPlaces(): Promise<void> {
+  const request = ++placesRequest
   const list = await api.places()
+  if (request !== placesRequest) return // a newer reload is under way
+  const before = places
+  places = list
   panes.left.setPlaces(list)
   panes.right.setPlaces(list)
+  // A pane showing a drive that was just removed moves to the first place (home).
+  const gone = before.filter(p => (p.kind === 'drive' || p.kind === 'volume') && !list.some(q => q.id === p.id))
+  for (const pane of [panes.left, panes.right]) {
+    const key = dirKey(pane.path)
+    const under = (root: string) => { const r = dirKey(root); return key === r || key.startsWith(`${r}/`) || key.startsWith(`${r}\\`) }
+    if (!isRemotePath(pane.path) && gone.some(p => under(p.path))) await pane.load(list[0]?.path || '/')
+  }
 }
 
 // ---------- boot ----------
@@ -857,6 +870,7 @@ async function boot(): Promise<void> {
 
   window.addEventListener('keydown', onKey)
   api.onMenu((cmd) => void run(cmd))
+  api.onPlacesChanged(() => void loadPlaces())
   if (settings.checkUpdatesOnStart) window.setTimeout(() => {
     if (!operating && !isModalOpen()) void showUpdate(true).catch(() => {})
   }, 1500)
