@@ -170,6 +170,8 @@ export interface FileDeskApi {
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
   listDir(path: string): Promise<Result<DirListing>>
+  watchDirectory(side: PaneSide, path: string): void
+  onDirectoryChanged(cb: (side: PaneSide, path: string) => void): () => void
   places(): Promise<Place[]>
   diskSpace(path: string): Promise<DiskSpace | null>
   resolvePath(input: string, base: string): Promise<Result<string>>

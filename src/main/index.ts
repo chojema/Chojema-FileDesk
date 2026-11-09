@@ -17,10 +17,12 @@ import { setWinClipboardFiles, showWinMenu, startWinHelper, stopWinHelper, winCl
 import { clipboardFiles, copyFiles, showMacMenu, showMacPlaceMenu } from './mac-shell'
 import { fitWindow, MIN_WINDOW, readWindowState, writeWindowState } from './window-state'
 import dragIconPath from '../../resources/icon-256.png?asset'
+import { DirectoryWatches } from './directory-watch'
 
 let win: BrowserWindow | null = null
 let dragIcon: NativeImage | undefined
 let settings: Settings
+let directoryWatches: DirectoryWatches | undefined
 const servers = createConnections(() => settings?.lang ?? 'ko')
 const files = new FileService(fsops, servers.manager)
 
@@ -86,6 +88,13 @@ function createWindow(): void {
   })
 
   const window = win
+  const watches = new DirectoryWatches((side, dir) => {
+    if (!window.isDestroyed()) window.webContents.send('fs:changed', side, dir)
+  })
+  directoryWatches = watches
+  window.webContents.on('did-start-loading', () => watches.close())
+  window.webContents.on('render-process-gone', () => watches.close())
+  window.once('closed', () => { watches.close(); directoryWatches = undefined })
   let timer: ReturnType<typeof setTimeout> | undefined
   let maximized = state.maximized
   const saveBounds = () => {
@@ -153,6 +162,11 @@ function registerIpc(): void {
     refreshMenu()
   })
   ipcMain.handle('fs:list', (_e, p: string) => files.list(p))
+  ipcMain.on('fs:watch', (e, side: unknown, dir: unknown) => {
+    if (e.sender === win?.webContents && (side === 'left' || side === 'right') && typeof dir === 'string') {
+      directoryWatches?.set(side, dir)
+    }
+  })
   ipcMain.handle('fs:places', async () => [
     ...await fsops.places({
       home: translate(settings.lang, 'places.home'),

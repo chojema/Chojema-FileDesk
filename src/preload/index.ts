@@ -7,6 +7,12 @@ const api: FileDeskApi = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
   listDir: (p) => ipcRenderer.invoke('fs:list', p),
+  watchDirectory: (side, p) => ipcRenderer.send('fs:watch', side, p),
+  onDirectoryChanged: (cb) => {
+    const h = (_e: IpcRendererEvent, side: 'left' | 'right', p: string) => cb(side, p)
+    ipcRenderer.on('fs:changed', h)
+    return () => ipcRenderer.removeListener('fs:changed', h)
+  },
   places: () => ipcRenderer.invoke('fs:places'),
   diskSpace: (p) => ipcRenderer.invoke('fs:space', p),
   resolvePath: (input, base) => ipcRenderer.invoke('fs:resolve', input, base),

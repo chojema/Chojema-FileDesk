@@ -29,6 +29,7 @@ export interface PaneHost {
   onOpenFile(entry: FileEntry): void
   onError(message: string): void
   onStateChange(): void
+  canAutoRefresh(): boolean
   /** Called after the pane has entered a different folder. */
   onVisited(path: string): void
   isFavorite(path: string): boolean
@@ -66,6 +67,7 @@ export class Pane {
   private placesList: Place[] = []
   private loadSeq = 0
   private loaded = false
+  private loading = false
   private parent: string | null = null
   /** Selected row pressed without modifiers: clear the rest on click, keep it for a drag. */
   private pendingClear = -1
@@ -165,6 +167,7 @@ export class Pane {
       if (this.renameArm && e.detail === 1 && at === this.cursor) {
         const path = this.rows[at]?.entry?.path
         this.renameTimer = window.setTimeout(() => {
+          this.renameTimer = 0
           if (this.rows[this.cursor]?.entry?.path === path && document.activeElement === this.listEl) this.beginRename()
         }, 500)
       }
@@ -237,6 +240,10 @@ export class Pane {
     return !!this.editing
   }
 
+  canAutoRefresh(): boolean {
+    return !this.loading && !this.editing && !this.renameTimer && document.activeElement !== this.pathInput && this.host.canAutoRefresh()
+  }
+
   /** Turns the name of the item under the cursor into an inline text field. */
   beginRename(): void {
     this.cancelSlowRename()
@@ -287,6 +294,7 @@ export class Pane {
 
   private cancelSlowRename(): void {
     window.clearTimeout(this.renameTimer)
+    this.renameTimer = 0
     this.renameArm = false
   }
 
@@ -309,16 +317,32 @@ export class Pane {
     if (request === this.loadSeq) await this.load(dest, { push: false })
   }
 
-  async load(path: string, opts: { push?: boolean; focusName?: string; keepCursor?: boolean; silent?: boolean } = {}): Promise<boolean> {
+  async load(path: string, opts: { push?: boolean; focusName?: string; keepCursor?: boolean; silent?: boolean; background?: boolean } = {}): Promise<boolean> {
+    if (opts.background && !this.canAutoRefresh()) return false
     const seq = ++this.loadSeq
-    const res = await api.listDir(path)
+    this.loading = true
+    let res
+    try { res = await api.listDir(path) }
+    finally { if (seq === this.loadSeq) this.loading = false }
     if (seq !== this.loadSeq) return false
+    if (opts.background && !this.canAutoRefresh()) return false
     if (!res.ok || !res.value) {
       if (!opts.silent) this.host.onError(`${t('err.notFound')}\n${path}\n${res.error ?? ''}`)
       return false
     }
     const listing = res.value
     const sameDir = this.loaded && listing.path === this.path
+    if (opts.background && sameDir && this.entries.length === listing.entries.length) {
+      const previous = new Map(this.entries.map(e => [e.path, e]))
+      if (listing.entries.every(e => {
+        const old = previous.get(e.path)
+        return old && e.size === old.size && e.mtime === old.mtime && e.isDir === old.isDir &&
+          e.isSymlink === old.isSymlink && e.hidden === old.hidden && e.dot === old.dot
+      })) return true
+    }
+    const scrollTop = this.listEl.scrollTop
+    const topPath = this.rows[Math.floor(scrollTop / ROW_H)]?.entry?.path
+    const anchorPath = this.rows[this.anchor]?.entry?.path
     this.loaded = true
     this.cancelSlowRename()
     const editPath = this.editing?.entry.path
@@ -344,10 +368,23 @@ export class Pane {
     else if (!sameDir) this.cursor = 0
     this.cursor = Math.min(this.cursor, Math.max(0, this.rows.length - 1))
     if (!sameDir) this.anchor = this.cursor
+    else if (opts.background) {
+      const anchor = this.rows.findIndex(r => r.entry?.path === anchorPath)
+      this.anchor = anchor >= 0 ? anchor : this.cursor
+    }
     // Drop selections that no longer exist.
     const names = new Set(this.entries.map((e) => e.path))
     for (const p of this.selected) if (!names.has(p)) this.selected.delete(p)
 
+    if (!opts.background) api.watchDirectory(this.side, this.path)
+    if (opts.background) {
+      const top = topPath ? this.rows.findIndex(r => r.entry?.path === topPath) : -1
+      this.innerEl.style.height = `${this.rows.length * ROW_H}px`
+      this.listEl.scrollTop = top >= 0 ? top * ROW_H + scrollTop % ROW_H : scrollTop
+      this.renderRows()
+      void this.updateStatus()
+      return true
+    }
     this.pathInput.value = this.path
     this.backBtn.disabled = this.history.length === 0
     this.fwdBtn.disabled = this.future.length === 0
@@ -363,8 +400,8 @@ export class Pane {
     return true
   }
 
-  refresh(): Promise<boolean> {
-    return this.load(this.path, { push: false, keepCursor: true })
+  refresh(background = false): Promise<boolean> {
+    return this.load(this.path, { push: false, keepCursor: true, silent: background, background })
   }
 
   /** Paths the next operation should act on: the selection (in display order), or the item under the cursor. */

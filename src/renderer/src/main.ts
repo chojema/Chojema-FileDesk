@@ -1,6 +1,6 @@
 import './styles.css'
 import { LANGS, type MsgKey } from '@shared/i18n'
-import type { ColumnWidths, ConflictPolicy, ContextItem, FileClipboard, FileEntry, Lang, PaneSide, Place, ServerConnection, Settings, ThemePref, TransferResult } from '@shared/types'
+import type { ColumnWidths, ConflictPolicy, ContextItem, FileClipboard, FileEntry, Lang, PaneSide, Place, ServerConnection, Settings, ShellMenuRequest, ShellMenuResult, ThemePref, TransferResult } from '@shared/types'
 import { alertBox, busy, choose, isModalOpen, popup, prompt } from './dialogs'
 import { Pane, type PaneHost } from './pane'
 import { api, el, icon, isMac, setLang, t, type IconName } from './util'
@@ -14,10 +14,52 @@ import { PLACE_SHORTCUTS, visiblePlaces } from '@shared/places'
 let settings: Settings
 let active: Pane
 let operating = false
+let booting = true
 const panes = {} as Record<PaneSide, Pane>
 const lastLocal = { left: '', right: '' }
 
 const other = (p: Pane): Pane => (p === panes.left ? panes.right : panes.left)
+
+// Keep changes pending while a click, rename, menu or file operation owns the list.
+const changedDirectories = new Map<Pane, string>()
+let refreshTimer = 0
+let pointerDown = false
+let dragging = false
+let menuOpen = false
+let interactionUntil = 0
+const canAutoRefresh = () => !booting && !operating && !isModalOpen() && !menuOpen && !pointerDown && !dragging && Date.now() >= interactionUntil
+
+function scheduleAutoRefresh(): void {
+  if (!refreshTimer && changedDirectories.size) refreshTimer = window.setTimeout(flushAutoRefresh, 250)
+}
+
+function flushAutoRefresh(): void {
+  refreshTimer = 0
+  for (const [pane, dir] of [...changedDirectories]) {
+    if (pane.path !== dir) { changedDirectories.delete(pane); continue }
+    if (!pane.canAutoRefresh()) continue
+    changedDirectories.delete(pane)
+    void pane.refresh(true).catch(() => false).then(ok => {
+      // An interaction may have begun while the directory was being read.
+      if (!ok && pane.path === dir && !pane.canAutoRefresh()) changedDirectories.set(pane, dir)
+      scheduleAutoRefresh()
+    })
+  }
+  scheduleAutoRefresh()
+}
+
+for (const type of ['mousedown', 'mouseup', 'keydown', 'wheel', 'dragstart', 'dragover', 'drop', 'dragend', 'blur'] as const) {
+  window.addEventListener(type, e => {
+    if (type === 'blur' && e.target !== window) return
+    interactionUntil = Date.now() + 700
+    if (type === 'mousedown') pointerDown = true
+    if (type === 'mouseup' || type === 'blur') pointerDown = false
+    if (type === 'dragstart' || type === 'dragover') dragging = true
+    if (type === 'drop' || type === 'dragend' || type === 'blur') dragging = false
+  }, true)
+}
+window.addEventListener('dragleave', e => { if (!e.relatedTarget) dragging = false }, true)
+window.addEventListener('mousemove', e => { if (!e.buttons) { pointerDown = false; dragging = false } }, true)
 
 // ---------- theme ----------
 
@@ -61,6 +103,7 @@ const host: PaneHost = {
   onOpenFile: (entry) => void openFile(entry),
   onError: (msg) => void alertBox(t('dlg.error.title'), msg),
   onStateChange: () => { persist(); updateToolbarDirection() },
+  canAutoRefresh,
   onVisited: addRecent,
   isFavorite: (p) => settings.favorites.some((f) => pathKey(f) === pathKey(p)),
   // The pane activates itself before calling these, so the commands act on it.
@@ -102,6 +145,12 @@ function applyColumns(): void {
 
 // ---------- context menu ----------
 
+async function showShellMenu(req: ShellMenuRequest): Promise<ShellMenuResult> {
+  menuOpen = true
+  try { return await api.contextMenu(req) }
+  finally { menuOpen = false; pointerDown = false; interactionUntil = Date.now() + 700 }
+}
+
 async function showPlaceContextMenu(pane: Pane, place: Place, extended: boolean): Promise<void> {
   if (operating || isModalOpen()) return
   const remote = isRemotePath(place.path)
@@ -115,7 +164,7 @@ async function showPlaceContextMenu(pane: Pane, place: Place, extended: boolean)
       { id: 'placeTerminal', label: t('tb.terminal') }
     ] : [])
   ]
-  const result = await api.contextMenu({ paths: [place.path], folder: place.path, items, extras: items, place: true, extended })
+  const result = await showShellMenu({ paths: [place.path], folder: place.path, items, extras: items, place: true, extended })
   if (result.id === 'placeOpen') await pane.load(place.path)
   else if (result.id === 'placeOther') {
     const target = other(pane)
@@ -184,7 +233,7 @@ async function showContextMenu(pane: Pane, onRow: boolean, extended: boolean): P
         item('swap', 'menu.swap', 'CmdOrCtrl+U')
       ]
   const paths = onRow ? pane.targets().map((e) => e.path) : []
-  const result = await api.contextMenu({ paths, folder: pane.path, items, extras, extended })
+  const result = await showShellMenu({ paths, folder: pane.path, items, extras, extended })
   if (result.changed) {
     // Explorer/Finder commands may finish a moment later.
     window.setTimeout(() => { void panes.left.refresh(); void panes.right.refresh() }, 600)
@@ -935,7 +984,6 @@ async function loadPlaces(): Promise<void> {
 // ---------- boot ----------
 
 async function boot(): Promise<void> {
-  let booting = true
   settings = await api.getSettings()
   setLang(settings.lang)
   applyTheme()
@@ -960,15 +1008,22 @@ async function boot(): Promise<void> {
   window.addEventListener('keydown', onKey)
   api.onMenu((cmd) => void run(cmd))
   api.onPlacesChanged(() => void loadPlaces())
+  api.onDirectoryChanged((side, dir) => {
+    const pane = panes[side]
+    if (pane?.path !== dir) return
+    changedDirectories.set(pane, dir)
+    scheduleAutoRefresh()
+  })
   if (settings.checkUpdatesOnStart) window.setTimeout(() => {
     if (!operating && !isModalOpen()) void showUpdate(true).catch(() => {})
   }, 1500)
   // Pick up external changes when the window regains focus.
   window.addEventListener('focus', () => {
-    if (!booting && !operating && !isModalOpen()) {
-      void panes.left.refresh()
-      void panes.right.refresh()
-    }
+    pointerDown = false
+    dragging = false
+    if (booting) return
+    for (const pane of [panes.left, panes.right]) changedDirectories.set(pane, pane.path)
+    scheduleAutoRefresh()
   })
 
   // Drive discovery and each pane load independently. A slow/unavailable drive must not
