@@ -94,7 +94,7 @@ export class FileService {
     await this.remote.remove(p, info.isDir && !info.isSymlink)
   }
 
-  async trash(paths: string[], progress: (p: Progress) => void): Promise<TransferResult> {
+  async trash(paths: string[], progress: (p: Progress) => void, confirmPermanentDelete?: (paths: string[]) => Promise<boolean>): Promise<TransferResult> {
     const out: TransferResult = { done: 0, skipped: 0, errors: [] }
     for (const [i, p] of paths.entries()) {
       progress({ current: itemName(p), index: i, total: paths.length })
@@ -102,6 +102,17 @@ export class FileService {
         if (isRemotePath(p)) { await this.remove(p); out.done++ }
         else { const r = await this.local.trash([p], () => {}); out.done += r.done; out.errors.push(...r.errors) }
       } catch (e) { out.errors.push({ path: p, message: message(e) }) }
+    }
+    const failed = out.errors.filter(e => !isRemotePath(e.path) && path.isAbsolute(e.path) && path.dirname(path.resolve(e.path)) !== path.resolve(e.path))
+    if (failed.length && confirmPermanentDelete && await confirmPermanentDelete(failed.map(e => e.path))) {
+      for (const [i, error] of failed.entries()) {
+        progress({ current: itemName(error.path), index: i, total: failed.length })
+        try {
+          await this.remove(error.path)
+          out.done++
+          out.errors.splice(out.errors.indexOf(error), 1)
+        } catch (e) { error.message = message(e) }
+      }
     }
     progress({ current: '', index: paths.length, total: paths.length })
     return out

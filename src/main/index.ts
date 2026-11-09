@@ -196,7 +196,19 @@ function registerIpc(): void {
   })
   ipcMain.handle('fs:mkdir', (_e, parent: string, name: string) => files.mkdir(parent, name))
   ipcMain.handle('fs:rename', (_e, p: string, name: string) => files.rename(p, name))
-  ipcMain.handle('fs:trash', (_e, paths: string[]) => files.trash(paths, progress))
+  ipcMain.handle('fs:trash', (e, paths: string[]) => files.trash(paths, progress, process.platform === 'win32' ? async failed => {
+    const owner = BrowserWindow.fromWebContents(e.sender)
+    if (!owner || owner.isDestroyed()) return false
+    const t = (key: Parameters<typeof translate>[1]) => translate(settings.lang, key)
+    const result = await dialog.showMessageBox(owner, {
+      type: 'warning', title: t('dlg.deletePermanent.title'),
+      message: translate(settings.lang, 'dlg.deletePermanent.msg', { n: failed.length }),
+      detail: failed.join('\n'),
+      buttons: [t('btn.cancel'), t('dlg.deletePermanent.title')],
+      defaultId: 0, cancelId: 0, noLink: true
+    })
+    return result.response === 1
+  } : undefined))
   ipcMain.handle('fs:dirSize', (_e, p: string) => files.dirSize(p))
   ipcMain.handle('shell:open', async (_e, p: string) => {
     if (isRemotePath(p)) {

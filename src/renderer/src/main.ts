@@ -509,7 +509,7 @@ async function duplicateFiles(): Promise<void> {
 }
 
 async function makeDir(): Promise<void> {
-  const name = await prompt({ title: t('dlg.mkdir.title'), label: t('dlg.mkdir.msg') })
+  const name = await prompt({ title: t('dlg.mkdir.title'), label: t('dlg.mkdir.msg'), value: active.targets()[0]?.name })
   if (!name) return
   const res = await api.mkdir(active.path, name)
   if (!res.ok) {
