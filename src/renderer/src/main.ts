@@ -9,7 +9,7 @@ import { APP_LINKS } from '@shared/links'
 import { isRemotePath, remotePath } from '@shared/remote-path'
 import { connectDialog, connectSaved } from './server-ui'
 import { showUpdate } from './update-ui'
-import { PLACE_SHORTCUTS, visiblePlaces } from '@shared/places'
+import { PLACE_SHORTCUTS, placeTarget, visiblePlaces } from '@shared/places'
 
 let settings: Settings
 let active: Pane
@@ -97,6 +97,7 @@ const host: PaneHost = {
     updateToolbarDirection()
   },
   isActive: (p) => active === p,
+  placeTarget: (pane, place) => placeTarget(place, other(pane).path, places, api.platform === 'win32'),
   isVisible: (e) => (settings.showHidden || !e.hidden) && (settings.showDotFiles || !e.dot),
   hiddenShown: () => settings.showHidden && settings.showDotFiles,
   toggleHiddenAll: () => void run('toggleHiddenAll'),

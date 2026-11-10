@@ -43,6 +43,7 @@ export interface PaneHost {
   /** Right-click in the list; onRow is false for empty space and "..". */
   contextMenu(pane: Pane, onRow: boolean, extended: boolean): void
   placeContextMenu(pane: Pane, place: Place, extended: boolean): void
+  placeTarget(pane: Pane, place: Place): string
   columnWidth(key: keyof ColumnWidths): number
   /** Live resize of a shared column; done is true when the drag ends. */
   resizeColumn(key: keyof ColumnWidths, width: number, done: boolean): void
@@ -819,7 +820,7 @@ export class Pane {
         b.append(icon(iconFor[p.kind], ''), el('span', { textContent: p.label }))
         b.dataset.placeId = p.id
         b.addEventListener('click', () => {
-          void this.load(p.path).then(() => this.focus())
+          void this.load(this.host.placeTarget(this, p)).then(() => this.focus())
         })
         b.addEventListener('contextmenu', (e) => {
           e.preventDefault()
