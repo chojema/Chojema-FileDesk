@@ -7,7 +7,7 @@ import { api, el, icon, isMac, setLang, t, type IconName } from './util'
 import { formatSize } from './util'
 import { APP_LINKS } from '@shared/links'
 import { isRemotePath, remotePath } from '@shared/remote-path'
-import { connectDialog, connectSaved } from './server-ui'
+import { confirmRemove, connectDialog, connectSaved } from './server-ui'
 import { showUpdate } from './update-ui'
 import { PLACE_SHORTCUTS, placeTarget, visiblePlaces } from '@shared/places'
 
@@ -806,7 +806,13 @@ async function run(cmd: string): Promise<void> {
   if (cmd === 'rename' && active.isEditing()) return
   // A command issued while a name is being edited applies the edit first.
   for (const p of [panes.left, panes.right]) await p.finishRename(true)
-  try { await (cmd.startsWith('server:') ? connectSavedServer(cmd.slice(7)) : commands[cmd]?.()) }
+  const [kind, id] = cmd.split(/:(.*)/s)
+  try {
+    if (kind === 'server') await connectSavedServer(id)
+    else if (kind === 'server-edit') await showConnection(await connectDialog({ profileId: id, side: active.side }))
+    else if (kind === 'server-remove') await confirmRemove(id)
+    else await commands[cmd]?.()
+  }
   catch (e) { await alertBox(t('dlg.error.title'), e instanceof Error ? e.message : String(e)) }
   if (!isModalOpen() && !active.isEditing()) active.focus()
 }

@@ -201,6 +201,8 @@ export interface FileDeskApi {
   onUpdateProgress(cb: (p: UpdateProgress) => void): () => void
   serverProfiles(): Promise<ServerProfile[]>
   removeServerProfile(id: string): Promise<void>
+  /** Saves a profile without connecting. */
+  saveServerProfile(req: ConnectRequest): Promise<Result<ServerProfile>>
   connectServer(req: ConnectRequest): Promise<Result<ServerConnection>>
   disconnectServer(root: string): Promise<void>
   serverConnections(): Promise<ServerConnection[]>

@@ -32,6 +32,7 @@ const api: FileDeskApi = {
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   serverProfiles: () => ipcRenderer.invoke('server:profiles'),
   removeServerProfile: (id) => ipcRenderer.invoke('server:remove', id),
+  saveServerProfile: (req) => ipcRenderer.invoke('server:save', req),
   connectServer: (req) => ipcRenderer.invoke('server:connect', req),
   disconnectServer: (root) => ipcRenderer.invoke('server:disconnect', root),
   serverConnections: () => ipcRenderer.invoke('server:connections'),

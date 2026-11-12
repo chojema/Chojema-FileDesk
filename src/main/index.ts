@@ -242,6 +242,14 @@ function registerIpc(): void {
   })
   ipcMain.handle('server:profiles', () => servers.profiles())
   ipcMain.handle('server:remove', async (_e, id: string) => { await servers.remove(id); refreshMenu() })
+  ipcMain.handle('server:save', async (_e, req: ConnectRequest) => {
+    try {
+      const value = await servers.saveProfile(req)
+      refreshMenu()
+      return { ok: true, value }
+    }
+    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
+  })
   ipcMain.handle('server:connect', async (_e, req: ConnectRequest) => {
     try {
       const value = await servers.connect(req)

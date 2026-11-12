@@ -79,6 +79,7 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     const pending = choose({ title: t('server.connect'), extra: form, buttons: [
       { id: 'cancel', label: t('btn.cancel') },
       { id: 'remove', label: t('server.remove') },
+      { id: 'save', label: t('server.saveOnly') },
       { id: 'connect', label: t('server.connectNow'), kind: 'primary' }
     ], cancelId: 'cancel' })
     if (profile.id && !profile.hasPassword) (profile.privateKeyPath ? phrase : secret).focus()
@@ -90,10 +91,14 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     profile = { id: profile.id, name: name.value, protocol: protocol.value as ServerProtocol, host: host.value, port: Number(port.value || portFor(protocol.value)), username: username.value, remoteDir: dir.value, privateKeyPath: key.value, rememberPassword: remember.checked, hasPassword: profile.hasPassword }
     portValue = port.value; password = secret.value; passphrase = phrase.value; saveProfile = save.checked; side = pane.value as PaneSide
     if (result === 'remove') {
-      if (profile.id) {
-        const ok = await choose({ title: t('server.remove'), message: t('server.removeConfirm'), buttons: [{ id: 'cancel', label: t('btn.cancel') }, { id: 'remove', label: t('server.remove'), kind: 'danger' }], cancelId: 'cancel' })
-        if (ok === 'remove') { await api.removeServerProfile(profile.id); profiles = await api.serverProfiles(); profile = defaults(); password = ''; passphrase = '' }
-      }
+      if (!profile.id) await alertBox(t('server.remove'), t('server.pickToRemove'))
+      else if (await confirmRemove(profile.id)) { profiles = await api.serverProfiles(); profile = defaults(); password = ''; passphrase = '' }
+      continue
+    }
+    if (result === 'save') {
+      const stored = await api.saveServerProfile({ profile, password, passphrase, saveProfile: true })
+      if (stored.ok) return null
+      await alertBox(t('dlg.error.title'), stored.error || '')
       continue
     }
     const progress = busy(t('server.connecting'))
@@ -103,6 +108,13 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     if (connected.ok && connected.value) return { connection: connected.value, side }
     await alertBox(t('dlg.error.title'), connected.error || '')
   }
+}
+
+/** Asks before removing a saved server and its stored credential; true when removed. */
+export async function confirmRemove(id: string): Promise<boolean> {
+  const ok = await choose({ title: t('server.remove'), message: t('server.removeConfirm'), buttons: [{ id: 'cancel', label: t('btn.cancel') }, { id: 'remove', label: t('server.remove'), kind: 'danger' }], cancelId: 'cancel' })
+  if (ok === 'remove') await api.removeServerProfile(id)
+  return ok === 'remove'
 }
 
 /**

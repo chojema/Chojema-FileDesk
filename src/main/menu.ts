@@ -104,10 +104,13 @@ export function buildMenu(win: BrowserWindow, settings: Settings, connected = fa
             { type: 'separator' },
             { label: t('server.saved'), enabled: false },
             ...saved.map((s): MenuItemConstructorOptions => ({
-              label: s.name,
-              type: 'checkbox',
-              checked: s.connected,
-              click: () => win.webContents.send('menu', `server:${s.id}`)
+              label: s.connected ? `✓ ${s.name}` : s.name,
+              submenu: [
+                { label: t('server.connectNow'), type: 'checkbox', checked: s.connected, click: () => win.webContents.send('menu', `server:${s.id}`) },
+                { label: t('server.edit'), click: () => win.webContents.send('menu', `server-edit:${s.id}`) },
+                { type: 'separator' },
+                { label: t('server.removeMenu'), click: () => win.webContents.send('menu', `server-remove:${s.id}`) }
+              ]
             }))
           ] as MenuItemConstructorOptions[])
         : [])

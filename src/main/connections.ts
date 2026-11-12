@@ -25,10 +25,15 @@ function save(edit: (v: Store) => void): Promise<void> {
   return operation
 }
 
+// Reuse a stored credential only for the same server/user/authentication method.
+const sameLogin = (a: ServerProfile, b: ServerProfile): boolean =>
+  a.host === b.host && a.port === b.port && a.username === b.username && a.protocol === b.protocol && a.privateKeyPath === b.privateKeyPath
+
 export function createConnections(language: () => Lang): {
   manager: RemoteManager
   profiles: () => ServerProfile[]
   remove: (id: string) => Promise<void>
+  saveProfile: (request: ConnectRequest) => Promise<ServerProfile>
   connect: (request: ConnectRequest) => Promise<ServerConnection>
 } {
   const manager = new RemoteManager(async (host, fingerprint, kind) => {
@@ -52,12 +57,22 @@ export function createConnections(language: () => Lang): {
     manager,
     profiles: () => read().profiles.map(({ secret, ...p }) => ({ ...p, hasPassword: !!secret })),
     remove: id => save(s => { s.profiles = s.profiles.filter(p => p.id !== id) }),
+    saveProfile: async request => {
+      const profile = normalizeProfile(request.profile)
+      const previous = read().profiles.find(p => p.id === profile.id)
+      let secret: string | undefined
+      if (profile.rememberPassword && (request.password || request.passphrase)) {
+        if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') throw new Error(language() === 'ko' ? '운영체제의 보안 저장소를 사용할 수 없습니다. 암호 저장을 끄고 저장하세요.' : 'Secure OS storage is unavailable. Turn off Remember Password to save.')
+        secret = safeStorage.encryptString(JSON.stringify({ password: request.password, passphrase: request.passphrase })).toString('base64')
+      } else if (profile.rememberPassword && !request.password && !request.passphrase && previous?.secret && sameLogin(previous, profile)) secret = previous.secret
+      await save(s => { s.profiles = [...s.profiles.filter(p => p.id !== profile.id), { ...profile, secret }] })
+      return { ...profile, hasPassword: !!secret }
+    },
     connect: async request => {
       const profile = normalizeProfile(request.profile)
       let password = request.password, passphrase = request.passphrase
       const previous = read().profiles.find(p => p.id === profile.id)
-      // Reuse a credential only for the same server/user/authentication method.
-      if (!password && !passphrase && previous?.secret && previous.host === profile.host && previous.port === profile.port && previous.username === profile.username && previous.protocol === profile.protocol && previous.privateKeyPath === profile.privateKeyPath) {
+      if (!password && !passphrase && previous?.secret && sameLogin(previous, profile)) {
         try {
           const stored = JSON.parse(safeStorage.decryptString(Buffer.from(previous.secret, 'base64')))
           password = stored.password || ''; passphrase = stored.passphrase || ''
