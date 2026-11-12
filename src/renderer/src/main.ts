@@ -601,6 +601,7 @@ async function openSettings(): Promise<void> {
   const autoUpdate = el('input', { type: 'checkbox', checked: settings.checkUpdatesOnStart, id: 'set-updates' })
   const fkeys = el('input', { type: 'checkbox', checked: settings.showFkeys, id: 'set-fkeys' })
   const shortcuts = PLACE_SHORTCUTS.map(id => ({ id, input: el('input', { type: 'checkbox', checked: settings.visiblePlaces[id], id: `set-place-${id}` }) }))
+  const clouds = places.filter(p => p.kind === 'cloud').map(p => ({ p, input: el('input', { type: 'checkbox', checked: settings.visiblePlaces[p.id] !== false }) }))
   const form = el(
     'div',
     {},
@@ -613,6 +614,8 @@ async function openSettings(): Promise<void> {
     el('div', { class: 'group-sep' }),
     el('div', { class: 'group-label', textContent: t('set.places') }),
     ...shortcuts.map(({ id, input }) => el('label', { class: 'check' }, input, t(id === 'desktop' && api.platform === 'win32' ? 'places.desktopWindows' : `places.${id}`))),
+    ...(clouds.length ? [el('div', { class: 'group-sep' }), el('div', { class: 'group-label', textContent: t('set.clouds') }),
+      ...clouds.map(({ p, input }) => el('label', { class: 'check', title: p.path }, input, p.label))] : []),
     el('div', { class: 'group-sep' }),
     el('label', { class: 'check' }, fkeys, t('set.fkeys')),
     el('label', { class: 'check' }, confirmDel, t('set.confirmDelete')),
@@ -638,6 +641,7 @@ async function openSettings(): Promise<void> {
   settings.checkUpdatesOnStart = autoUpdate.checked
   settings.showFkeys = fkeys.checked
   for (const { id, input } of shortcuts) settings.visiblePlaces[id] = input.checked
+  for (const { p, input } of clouds) settings.visiblePlaces[p.id] = input.checked
   applyPlaces()
   applyTheme()
   applyFkeys()

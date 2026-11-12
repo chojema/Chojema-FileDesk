@@ -28,7 +28,7 @@ export interface Place {
   id: string
   label: string
   path: string
-  kind: 'drive' | 'volume' | 'home' | 'folder' | 'server'
+  kind: 'drive' | 'volume' | 'home' | 'folder' | 'cloud' | 'server'
 }
 
 export interface DiskSpace {
@@ -49,7 +49,8 @@ export interface ColumnWidths {
 }
 
 export type PlaceShortcut = 'home' | 'desktop' | 'documents' | 'downloads'
-export type PlaceVisibility = Record<PlaceShortcut, boolean>
+/** Shortcut flags plus `cloud-*` ids the user turned off or on (cloud drives default to shown). */
+export type PlaceVisibility = Record<PlaceShortcut, boolean> & { [cloudId: string]: boolean }
 
 export interface Settings {
   lang: Lang

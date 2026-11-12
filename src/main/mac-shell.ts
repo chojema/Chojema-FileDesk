@@ -37,6 +37,8 @@ async function appIcon(p: string) {
 const finder = (lines: string[], args: string[]) => run('osascript', ['-e', 'on run argv', '-e', 'tell application "Finder"', ...lines.flatMap(l => ['-e', l]), '-e', 'end tell', '-e', 'end run', ...args])
 
 const getInfo = (paths: string[]) => finder(['activate', 'repeat with p in argv', 'open information window of (POSIX file (contents of p) as alias)', 'end repeat'], paths)
+/** Finder's Delete, which works where NSFileManager trash refuses (File Provider drives such as Synology Drive). */
+export const finderTrash = (p: string) => finder(['delete (POSIX file (item 1 of argv) as alias)'], [p])
 const makeAlias = (paths: string[]) => finder(['repeat with p in argv', 'set f to POSIX file (contents of p) as alias', 'make new alias file at (container of f) to f', 'end repeat'], paths)
 
 async function unique(dir: string, stem: string, ext: string): Promise<string> {

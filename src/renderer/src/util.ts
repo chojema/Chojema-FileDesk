@@ -78,6 +78,7 @@ const ICONS = {
   back: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M10 3L5 8l5 5"/>',
   forward: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 3l5 5-5 5"/>',
   parent: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 10l5-5 5 5"/>',
+  cloud: '<path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" d="M4.5 12.5a2.8 2.8 0 0 1-.4-5.6 3.9 3.9 0 0 1 7.5-.9 2.9 2.9 0 0 1 .4 6.5z"/>',
   drive:
     '<rect x="1.5" y="4" width="13" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.5" cy="8" r=".9" fill="currentColor"/>',
   home: '<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M2.5 7.2L8 2.5l5.5 4.7V13a.5.5 0 0 1-.5.5H9.6V10H6.4v3.5H3a.5.5 0 0 1-.5-.5z"/>',

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizePlaceVisibility, placeTarget, visiblePlaces } from '../src/shared/places'
+import { cloudLabel, normalizePlaceVisibility, placeTarget, visiblePlaces } from '../src/shared/places'
 import type { Place } from '../src/shared/types'
 
 test('old settings hide Home by default and keep the other shortcuts', () => {
@@ -47,4 +47,18 @@ test('volume clicks distinguish nested mounts and full path boundaries on Mac', 
   assert.equal(placeTarget(usb, '/Volumes/usb/work', list, false), usb.path)
   assert.equal(placeTarget(usb, '/Volumes/USB\\work', list, false), usb.path)
   assert.equal(placeTarget(root, 'ftp://host/work', list, false), root.path)
+})
+
+test('cloud drives are shown unless turned off, and keep readable labels', () => {
+  const list = [
+    { id: 'cloud-icloud', label: 'iCloud Drive', path: '/i', kind: 'cloud' },
+    { id: 'cloud-Dropbox', label: 'Dropbox', path: '/d', kind: 'cloud' }
+  ] as Place[]
+  const vis = normalizePlaceVisibility({ 'cloud-Dropbox': false, 'cloud-x': 'no', other: false })
+  assert.deepEqual(vis, { 'cloud-Dropbox': false, home: false, desktop: true, documents: true, downloads: true })
+  assert.deepEqual(visiblePlaces(list, vis).map(p => p.id), ['cloud-icloud'])
+  assert.equal(cloudLabel('GoogleDrive-me@example.com'), 'Google Drive (me@example.com)')
+  assert.equal(cloudLabel('OneDrive-개인'), 'OneDrive (개인)')
+  assert.equal(cloudLabel('Dropbox'), 'Dropbox')
+  assert.equal(cloudLabel('SomeNew-acct'), 'SomeNew (acct)')
 })

@@ -74,7 +74,16 @@ export class RemoteManager {
         // Complete TLS validation/explicit trust before sending login credentials.
         if (p.protocol === 'ftps-implicit') await ftp.connectImplicitTLS(p.host, p.port, { rejectUnauthorized: false })
         else {
-          await ftp.connect(p.host, p.port)
+          const pending = ftp.connect(p.host, p.port)
+          const socket = ftp.ftp.socket
+          let greeting = ''
+          // FTP's numeric response parser otherwise waits for a timeout on SSH greetings.
+          const detectSsh = (chunk: string) => {
+            greeting = (greeting + chunk).slice(0, 512)
+            if (/^SSH-\d+\.\d+-/m.test(greeting)) ftp.ftp.closeWithError(new Error('This server uses SSH. Select SFTP · SSH and keep the current port.', { cause: 'server.sftpRequired' }))
+          }
+          socket.on('data', detectSsh)
+          try { await pending } finally { socket.off('data', detectSsh) }
           if (p.protocol === 'ftps') await ftp.useTLS({ rejectUnauthorized: false, ...(isIP(p.host) ? {} : { servername: p.host }) })
         }
         if (p.protocol !== 'ftp') {
@@ -107,7 +116,11 @@ export class RemoteManager {
       if (old) await this.close(old)
       this.sessions.set(key, s)
       return s.connection
-    } catch (e) { await this.close(s); throw e }
+    } catch (e) {
+      await this.close(s)
+      if (p.protocol === 'ftps-implicit' && (e as NodeJS.ErrnoException)?.code === 'ERR_SSL_WRONG_VERSION_NUMBER') throw new Error('The server did not respond with TLS. Check the protocol and port. For an SSH server, select SFTP · SSH and keep the current port.', { cause: 'server.tlsMismatch' })
+      throw e
+    }
   }
 
   private async close(s: Session): Promise<void> {

@@ -248,7 +248,10 @@ function registerIpc(): void {
       refreshMenu()
       return { ok: true, value }
     }
-    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) } }
+    catch (e) {
+      const error = e instanceof Error && (e.cause === 'server.sftpRequired' || e.cause === 'server.tlsMismatch') ? translate(settings.lang, e.cause) : e instanceof Error ? e.message : String(e)
+      return { ok: false, error }
+    }
   })
   ipcMain.handle('server:disconnect', async (_e, root: string) => {
     await servers.manager.disconnect(root)

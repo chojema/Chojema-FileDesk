@@ -810,7 +810,7 @@ export class Pane {
   }
 
   private renderPlaces(): void {
-    const iconFor: Record<Place['kind'], IconName> = { drive: 'drive', volume: 'drive', home: 'home', folder: 'star', server: 'drive' }
+    const iconFor: Record<Place['kind'], IconName> = { drive: 'drive', volume: 'drive', home: 'home', folder: 'star', cloud: 'cloud', server: 'drive' }
     const current = this.placesList
       .filter((p) => this.path.toLowerCase().startsWith(p.path.toLowerCase()))
       .sort((a, b) => b.path.length - a.path.length)[0]

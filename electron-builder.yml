@@ -24,7 +24,7 @@ mac:
   identity: "-"
   hardenedRuntime: false
   extendInfo:
-    NSAppleEventsUsageDescription: Finder의 정보 가져오기와 가상본 만들기에 사용합니다. Used for Finder Get Info and Make Alias.
+    NSAppleEventsUsageDescription: Finder의 정보 가져오기, 가상본 만들기, 클라우드 드라이브 항목 삭제에 사용합니다. Used for Finder Get Info, Make Alias and deleting cloud drive items.
   target:
     - target: dmg
       arch: [arm64, x64]

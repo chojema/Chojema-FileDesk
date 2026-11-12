@@ -9,6 +9,7 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
   let profiles = await api.serverProfiles()
   let profile = profiles.find(p => p.id === initial?.profileId) || defaults()
   let password = '', passphrase = '', saveProfile = true, side: PaneSide = initial?.side || 'right'
+  let portValue = profile.id ? String(profile.port) : ''
   while (true) {
     const saved = el('select', { id: 'server-saved' })
     saved.append(el('option', { value: '', textContent: t('server.new') }))
@@ -17,7 +18,9 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     const protocol = el('select', { id: 'server-protocol' })
     ;([['ftps', 'FTPS · TLS'], ['sftp', 'SFTP · SSH'], ['ftp', 'FTP · No TLS'], ['ftps-implicit', 'FTPS · Implicit TLS']] as const).forEach(([value, label]) => protocol.append(el('option', { value, textContent: label, selected: value === profile.protocol })))
     const host = el('input', { type: 'text', id: 'server-host', value: profile.host, placeholder: 'server.example.com / sftp://user@host:22/folder', autocomplete: 'off' })
-    const port = el('input', { type: 'number', id: 'server-port', value: String(profile.port), min: '1', max: '65535' })
+    const port = el('input', { type: 'number', id: 'server-port', value: portValue, min: '1', max: '65535' })
+    const portHint = el('p', { class: 'hint', id: 'server-port-hint' })
+    port.setAttribute('aria-describedby', portHint.id)
     const username = el('input', { type: 'text', id: 'server-user', value: profile.username, autocomplete: 'off' })
     const secret = el('input', { type: 'password', id: 'server-password', value: password, autocomplete: 'off', placeholder: profile.hasPassword ? t('server.savedPassword') : '' })
     const dir = el('input', { type: 'text', id: 'server-path', value: profile.remoteDir, placeholder: '/' })
@@ -33,10 +36,14 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
       return el('div', { class: 'field' }, el('label', { textContent: t(label), htmlFor: target?.id || '' }), control)
     }
     const sshFields = el('div', { class: 'server-ssh' }, field('server.key', el('div', { class: 'input-action' }, key, pick)), field('server.passphrase', phrase))
-    const tls = () => { sshFields.hidden = protocol.value !== 'sftp' }
+    const tls = () => {
+      sshFields.hidden = protocol.value !== 'sftp'
+      port.placeholder = String(portFor(protocol.value))
+      portHint.textContent = t('server.portHint', { port: portFor(protocol.value) })
+    }
     save.addEventListener('change', () => { remember.disabled = !save.checked; if (!save.checked) remember.checked = false })
     remember.disabled = !save.checked
-    protocol.addEventListener('change', () => { port.value = String(portFor(protocol.value)); tls() })
+    protocol.addEventListener('change', tls)
     const importUrl = () => {
       if (!/^[a-z]+:\/\//i.test(host.value.trim())) return
       try {
@@ -44,7 +51,7 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
         if (!['ftp:', 'ftps:', 'sftp:'].includes(u.protocol)) return
         protocol.value = u.protocol.slice(0, -1)
         host.value = u.hostname
-        port.value = u.port || String(portFor(protocol.value))
+        port.value = u.port || ''
         if (u.username) username.value = decodeURIComponent(u.username)
         if (u.password) secret.value = decodeURIComponent(u.password)
         if (u.pathname && u.pathname !== '/') dir.value = decodeURIComponent(u.pathname)
@@ -54,7 +61,7 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     host.addEventListener('change', importUrl)
     saved.addEventListener('change', () => {
       profile = profiles.find(p => p.id === saved.value) || defaults()
-      name.value = profile.name; protocol.value = profile.protocol; host.value = profile.host; port.value = String(profile.port)
+      name.value = profile.name; protocol.value = profile.protocol; host.value = profile.host; port.value = profile.id ? String(profile.port) : ''
       username.value = profile.username; dir.value = profile.remoteDir; key.value = profile.privateKeyPath
       secret.value = ''; phrase.value = ''; secret.placeholder = profile.hasPassword ? t('server.savedPassword') : ''
       remember.checked = profile.rememberPassword; tls()
@@ -62,7 +69,7 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     tls()
     const form = el('div', { class: 'server-form' },
       field('server.saved', saved), field('server.name', name),
-      el('div', { class: 'field-pair' }, field('server.protocol', protocol), field('server.port', port)),
+      el('div', { class: 'field-pair' }, field('server.protocol', protocol), field('server.port', el('div', {}, port, portHint))),
       field('server.host', host),
       el('div', { class: 'field-pair' }, field('server.user', username), field('server.password', secret)),
       field('server.path', dir), sshFields, field('server.side', pane),
@@ -80,8 +87,8 @@ export async function connectDialog(initial?: { profileId?: string; side?: PaneS
     const result = await pending
     if (result === 'cancel') return null
     importUrl()
-    profile = { id: profile.id, name: name.value, protocol: protocol.value as ServerProtocol, host: host.value, port: Number(port.value), username: username.value, remoteDir: dir.value, privateKeyPath: key.value, rememberPassword: remember.checked, hasPassword: profile.hasPassword }
-    password = secret.value; passphrase = phrase.value; saveProfile = save.checked; side = pane.value as PaneSide
+    profile = { id: profile.id, name: name.value, protocol: protocol.value as ServerProtocol, host: host.value, port: Number(port.value || portFor(protocol.value)), username: username.value, remoteDir: dir.value, privateKeyPath: key.value, rememberPassword: remember.checked, hasPassword: profile.hasPassword }
+    portValue = port.value; password = secret.value; passphrase = phrase.value; saveProfile = save.checked; side = pane.value as PaneSide
     if (result === 'remove') {
       if (profile.id) {
         const ok = await choose({ title: t('server.remove'), message: t('server.removeConfirm'), buttons: [{ id: 'cancel', label: t('btn.cancel') }, { id: 'remove', label: t('server.remove'), kind: 'danger' }], cancelId: 'cancel' })

@@ -4,6 +4,8 @@ import { execFile } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
 import { copyName } from '@shared/copy-name'
+import { cloudLabel } from '@shared/places'
+import { finderTrash } from './mac-shell'
 import type {
   DirListing,
   DiskSpace,
@@ -123,6 +125,23 @@ export async function places(labels: Record<'home' | 'desktop' | 'documents' | '
   add('desktop', labels.desktop, app.getPath('desktop'), 'folder')
   add('documents', labels.documents, app.getPath('documents'), 'folder')
   add('downloads', labels.downloads, app.getPath('downloads'), 'folder')
+  const home = os.homedir()
+  const cloud = (id: string, label: string, p: string | undefined) => {
+    if (p && !out.some(q => q.path === p)) add(`cloud-${id}`, label, p, 'cloud')
+  }
+  if (process.platform === 'darwin') {
+    cloud('icloud', 'iCloud Drive', path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'))
+    const root = path.join(home, 'Library', 'CloudStorage')
+    try {
+      for (const name of (await fsp.readdir(root)).sort()) if (!name.startsWith('.')) cloud(name, cloudLabel(name), path.join(root, name))
+    } catch { /* no cloud storage providers */ }
+  } else if (isWin) {
+    // Google Drive for desktop appears as its own drive letter below.
+    cloud('icloud', 'iCloud Drive', path.join(home, 'iCloudDrive'))
+    cloud('onedrive', 'OneDrive', process.env.OneDriveConsumer || process.env.OneDrive)
+    cloud('onedrive-business', 'OneDrive (Business)', process.env.OneDriveCommercial)
+    cloud('dropbox', 'Dropbox', path.join(home, 'Dropbox'))
+  }
 
   if (isWin) {
     // Checked in parallel off the main thread. Missing letters fail at once; a mapped network
@@ -283,7 +302,10 @@ export async function trash(paths: string[], onProgress: (p: Progress) => void):
   for (let i = 0; i < paths.length; i++) {
     onProgress({ current: path.basename(paths[i]), index: i, total: paths.length })
     try {
-      await shell.trashItem(paths[i])
+      try { await shell.trashItem(paths[i]) } catch (e) {
+        if (process.platform !== 'darwin') throw e
+        await finderTrash(paths[i]).catch(() => { throw e })
+      }
       result.done++
     } catch (e) {
       result.errors.push({ path: paths[i], message: errMsg(e) })
