@@ -63,6 +63,8 @@ export class Pane {
   private history: string[] = []
   private future: string[] = []
   private anchor = 0
+  /** Item picked by the last plain click; Ctrl/Cmd+click adds to it. */
+  private clickPick: string | undefined
   private typeBuf = ''
   private typeTimer = 0
   private placesList: Place[] = []
@@ -659,6 +661,9 @@ export class Pane {
         if (en) this.selected.add(en.path)
       }
     } else if (toggle) {
+      // Explorer/Finder: the item a plain click picked counts as already selected.
+      const cur = this.rows[this.cursor]?.entry
+      if (this.selected.size === 0 && cur && cur.path === this.clickPick && this.cursor !== idx) this.selected.add(cur.path)
       const en = this.rows[idx].entry
       if (en) this.selected.has(en.path) ? this.selected.delete(en.path) : this.selected.add(en.path)
       this.anchor = idx
@@ -666,6 +671,7 @@ export class Pane {
       const en = this.rows[idx].entry
       if (en && this.selected.has(en.path)) this.pendingClear = idx
       else this.selected.clear()
+      this.clickPick = en?.path
       this.anchor = idx
     }
     this.cursor = idx
