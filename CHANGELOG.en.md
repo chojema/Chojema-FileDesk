@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 [한국어](CHANGELOG.md)
 
+## [0.4.16] - 2026-11-16
+
+- Details: [release-notes/v0.4.16.en.md](release-notes/v0.4.16.en.md)
+
 ## [0.4.15] - 2026-11-15
 
 - Details: [release-notes/v0.4.15.en.md](release-notes/v0.4.15.en.md)

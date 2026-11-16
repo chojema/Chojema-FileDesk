@@ -16,6 +16,8 @@ export interface FileEntry {
   dot: boolean
   /** OS hidden attribute (Windows hidden/system, macOS UF_HIDDEN). */
   hidden: boolean
+  /** macOS package (.app) shown and opened as one item, like Finder. */
+  pkg?: boolean
 }
 
 export interface DirListing {

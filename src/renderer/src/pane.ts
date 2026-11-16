@@ -593,7 +593,7 @@ export class Pane {
       if (this.selected.has(entry.path)) this.selected.delete(entry.path)
       else {
         this.selected.add(entry.path)
-        if (entry.isDir && !this.dirSizes.has(entry.path)) {
+        if ((entry.isDir || entry.pkg) && !this.dirSizes.has(entry.path)) {
           // Like classic commanders: selecting a folder calculates its size.
           void api.dirSize(entry.path).then((size) => {
             this.dirSizes.set(entry.path, size)
@@ -884,7 +884,7 @@ export class Pane {
     if (e.isDir) div.classList.add('dir')
     if (e.hidden || e.dot) div.classList.add('hidden-entry')
     if (this.selected.has(e.path)) div.classList.add('selected')
-    const size = e.isDir ? (this.dirSizes.has(e.path) ? formatSize(this.dirSizes.get(e.path)!) : t('dir')) : formatSize(e.size)
+    const size = e.isDir || e.pkg ? (this.dirSizes.has(e.path) ? formatSize(this.dirSizes.get(e.path)!) : e.pkg ? '' : t('dir')) : formatSize(e.size)
     const name = editing ? this.editing!.input : el('span', { textContent: e.isDir || !e.ext ? e.name : e.name.slice(0, -(e.ext.length + 1)) })
     div.title = e.name
     div.append(
@@ -918,7 +918,7 @@ export class Pane {
     const hiddenCount = this.entries.length - visible
     if (this.selected.size) {
       let bytes = 0
-      for (const e of this.entries) if (this.selected.has(e.path)) bytes += e.isDir ? (this.dirSizes.get(e.path) ?? 0) : e.size
+      for (const e of this.entries) if (this.selected.has(e.path)) bytes += e.isDir || e.pkg ? (this.dirSizes.get(e.path) ?? 0) : e.size
       this.statusLeft.textContent = t('status.selected', { n: this.selected.size, size: formatSize(bytes) })
     } else {
       this.statusLeft.textContent =

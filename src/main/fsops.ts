@@ -105,8 +105,10 @@ export async function listDir(dir: string): Promise<Result<DirListing>> {
         }
         const dot = d.name.startsWith('.')
         const hidden = hiddenSet.has(d.name) || (isWin && isWinSystemRootEntry(full, d.name))
+        const pkg = isDir && process.platform === 'darwin' && /\.app$/i.test(d.name)
+        if (pkg) isDir = false
         const ext = isDir ? '' : path.extname(d.name).slice(1)
-        entries.push({ name: d.name, path: full, isDir, isSymlink, size, mtime, ext, dot, hidden })
+        entries.push({ name: d.name, path: full, isDir, isSymlink, size, mtime, ext, dot, hidden, ...(pkg && { pkg }) })
       })
     )
     const parentDir = path.dirname(abs)
