@@ -104,7 +104,7 @@ const ICONS = {
   tbCopyList:
     '<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M6 3.5h8M6 8h8M6 12.5h8"/><circle cx="2.7" cy="3.5" r="1" fill="currentColor"/><circle cx="2.7" cy="8" r="1" fill="currentColor"/><circle cx="2.7" cy="12.5" r="1" fill="currentColor"/>',
   tbCopyName:
-    '<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M2 12.5L5 3.5l3 9M3 9.7h4"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M10 12.5h4M12 3.5v9M10.8 3.5h2.4"/>',
+    '<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M2.3 2.3h5.1l6.3 6.3-5.1 5.1-6.3-6.3z"/><circle cx="5" cy="5" r="1" fill="currentColor"/>',
   tbCopyPath:
     '<rect x="3" y="2.8" width="10" height="11.7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path fill="currentColor" d="M5.8 1.5h4.4a.8.8 0 0 1 .8.8v1.1a.6.6 0 0 1-.6.6H5.6a.6.6 0 0 1-.6-.6V2.3a.8.8 0 0 1 .8-.8z"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M5.6 7.5h4.8M5.6 10.3h3.2"/>',
   tbTerminal: '<rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.2L6.8 8l-2.3 1.8M8.3 10.2h3.2"/>',
