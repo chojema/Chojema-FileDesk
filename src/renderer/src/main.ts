@@ -760,6 +760,7 @@ const commands: Record<string, () => void | Promise<void>> = {
     if (!res.ok) await alertBox(t('dlg.error.title'), t('err.terminal'), `${active.path}\n${res.error ?? ''}`)
   },
   copyPath: copyPaths,
+  copyName: copyNames,
   copyFiles: () => clipFiles(false),
   cutFiles: () => clipFiles(true),
   paste: () => pasteFiles(),
@@ -790,6 +791,14 @@ async function copyPaths(): Promise<void> {
   const paths = items.length ? items.map((e) => e.path) : [active.path]
   await api.writeClipboard(paths.join(EOL))
   toast(paths.length === 1 ? t('toast.pathCopied', { path: paths[0] }) : t('toast.pathsCopied', { n: paths.length }))
+}
+
+/** Copies the selected items' names (one per line), the item under the cursor, or the current folder's name. */
+async function copyNames(): Promise<void> {
+  const items = active.targets()
+  const names = items.length ? items.map((e) => e.name) : [active.path.split(/[\\/]/).filter(Boolean).pop() ?? active.path]
+  await api.writeClipboard(names.join(EOL))
+  toast(names.length === 1 ? t('toast.nameCopied', { name: names[0] }) : t('toast.namesCopied', { n: names.length }))
 }
 
 let toastTimer = 0
@@ -911,6 +920,7 @@ function renderToolbar(): void {
   // Pinned to the bottom edge of the toolbar.
   const terminal: [IconName, MsgKey, string] = ['tbTerminal', 'tb.terminal', 'terminal']
   const copyPath: [IconName, MsgKey, string, string] = ['tbCopyPath', 'tb.copyPath', 'copyPath', isMac ? '⌘⇧C' : 'Ctrl+Shift+C']
+  const copyName: [IconName, MsgKey, string] = ['tbCopyName', 'tb.copyName', 'copyName']
   const copyList: [IconName, MsgKey, string] = ['tbCopyList', 'tb.copyList', 'copyList']
 
   const button = (ic: IconName, label: MsgKey, cmd: string, key?: string, cls?: string): HTMLButtonElement => {
@@ -930,7 +940,7 @@ function renderToolbar(): void {
   const main = el('div', { class: 'tb-main' })
   const head = el('div', { class: 'tb-head' }, button('tbSwap', 'menu.swap', 'swap', isMac ? '⌘U' : 'Ctrl+U'))
   main.append(...items.map((it) => (it ? button(...it) : el('div', { class: 'tb-sep' }))))
-  const foot = el('div', { class: 'tb-foot' }, el('div', { class: 'tb-sep' }), button(...terminal), button(...copyPath), button(...copyList))
+  const foot = el('div', { class: 'tb-foot' }, el('div', { class: 'tb-sep' }), button(...terminal), button(...copyName), button(...copyPath), button(...copyList))
   bar.replaceChildren(head, main, foot)
   updateToolbarDirection()
 }
