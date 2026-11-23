@@ -16,6 +16,8 @@ const left = path.join(work, 'left'), right = path.join(work, 'right'), user = p
 for (const dir of [left, right, user]) fs.mkdirSync(dir)
 fs.mkdirSync(path.join(left, '01 Folder'))
 fs.writeFileSync(path.join(left, '01 Folder', 'inside.txt'), 'inside')
+const longName = `z${'a'.repeat(179)}.txt`
+fs.writeFileSync(path.join(left, '01 Folder', longName), 'long path')
 fs.writeFileSync(path.join(left, '02 File.txt'), 'test')
 fs.writeFileSync(path.join(left, '03 Other.txt'), 'other')
 for (let i = 0; i < 180; i++) fs.writeFileSync(path.join(left, `item-${String(i).padStart(3, '0')}.txt`), String(i))
@@ -67,6 +69,17 @@ async function testPlatform(platform, target, native = false) {
       if(!row)throw new Error('Missing row');const r=(row.querySelector(${JSON.stringify(part)})||row).getBoundingClientRect();return {x:r.x+Math.min(10,r.width/2),y:r.y+r.height/2}
     })()`)
     const click = async (position, count = 1, modifiers = 0, button = 'left') => {
+      if (process.platform === 'darwin' && platform === 'win32' && modifiers === 2 && button === 'left') {
+        // macOS turns a native Ctrl-click into a context click before the Windows renderer receives it.
+        await ev(`{
+          const { x, y } = ${JSON.stringify(position)}
+          const element = document.elementFromPoint(x, y)
+          for (const type of ['mousedown', 'mouseup', 'click']) {
+            element.dispatchEvent(new MouseEvent(type, { bubbles: true, detail: ${count}, ctrlKey: true, clientX: x, clientY: y }))
+          }
+        }`)
+        return
+      }
       await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...position })
       await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...position, button, clickCount: count, modifiers })
       await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...position, button, clickCount: count, modifiers })
@@ -75,22 +88,78 @@ async function testPlatform(platform, target, native = false) {
     const doubleClick = async (side, title, part) => { const p = await point(side, title, part); await click(p); await click(p, 2); await pause(100) }
     const state = side => ev(`({cursor:document.querySelector('.pane[data-side="${side}"] .row.cursor')?.title,focus:document.activeElement===document.querySelector('.pane[data-side="${side}"] .list'),active:document.querySelector('.pane[data-side="${side}"]').classList.contains('active')})`)
     const current = side => ev(`document.querySelector('.pane[data-side="${side}"] .path-input').value`)
+    const selectedPath = () => ev(`document.querySelector('#selection-path')?.textContent`)
+    const status = side => ev(`document.querySelector('.pane[data-side="${side}"] .pane-status > :first-child').textContent`)
     await pause(150)
     await click(await point('left', '02 File.txt'))
     assert.equal(await ev('window.__pressed.isConnected'), true, 'mousedown must keep the pointed-to DOM node alive')
     assert.deepEqual(await state('left'), { cursor: '02 File.txt', focus: true, active: true })
     assert.ok((await ev('window.__pointerTrace')).some(e => e.type === 'click' && e.trusted))
     pass('real down/up keeps the row, highlights it and focuses the pane')
+    const filePath = path.join(left, '02 File.txt')
+    assert.equal(await selectedPath(), filePath)
+    assert.equal(await status('left'), '183 items')
+    await click(await point('left', '01 Folder', '.name .icon'))
+    const folderPath = path.join(left, '01 Folder')
+    assert.equal(await selectedPath(), folderPath)
+    await click(await point('left', '..'))
+    assert.equal(await selectedPath(), '')
+    pass('the window-wide status bar shows only a single file or folder path')
+    await click(await point('left', '02 File.txt'))
     const mod = platform === 'darwin' ? 4 : 2
     await click(await point('left', '03 Other.txt'), 1, mod)
-    await click(await point('left', '02 File.txt'), 1, mod)
     assert.deepEqual(await ev(`[...document.querySelectorAll('.pane[data-side="left"] .row.selected')].map(x=>x.title).sort()`), ['02 File.txt', '03 Other.txt'])
+    await click(await point('left', '02 File.txt'), 1, mod)
+    assert.equal(await selectedPath(), path.join(left, '03 Other.txt'))
     await click(await point('left', '02 File.txt'))
     await click(await point('left', 'item-001.txt'), 1, 8)
     assert.equal(await ev(`document.querySelectorAll('.pane[data-side="left"] .row.selected').length`), 4)
+    assert.match(await status('left'), /^4 selected/)
+    assert.equal(await selectedPath(), '')
     pass('Ctrl/Cmd toggles and Shift range selection')
+    await click(await point('right', 'Right-1.txt'))
+    const rightPath = path.join(right, 'Right-1.txt')
+    assert.equal(await selectedPath(), rightPath)
+    const tab = async () => {
+      await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+      await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    }
+    await tab()
+    assert.equal(await selectedPath(), '')
+    await tab()
+    assert.equal(await selectedPath(), rightPath)
+    await click(await point('right', 'Right-2.txt'), 1, mod)
+    const selectedColor = side => ev(`getComputedStyle(document.querySelector('.pane[data-side="${side}"] .row.selected:not(.cursor)')).backgroundColor`)
+    const paneStatusPoint = side => ev(`(() => {
+      const r = document.querySelector('.pane[data-side="${side}"] .pane-status').getBoundingClientRect()
+      return { x: r.x + 4, y: r.y + r.height / 2 }
+    })()`)
+    for (const theme of ['light', 'dark']) {
+      await ev(`document.documentElement.dataset.theme = '${theme}'`)
+      await click(await paneStatusPoint('right'))
+      const activeColor = await selectedColor('right')
+      const inactiveColor = await selectedColor('left')
+      assert.notEqual(activeColor, inactiveColor)
+      await click(await paneStatusPoint('left'))
+      assert.equal(await selectedColor('left'), activeColor)
+      assert.equal(await selectedColor('right'), inactiveColor)
+    }
+    await ev(`document.documentElement.dataset.theme = 'light'`)
+    await click(await point('right', 'Right-1.txt'))
+    pass('retained selections use distinct active and inactive colors in both themes')
     await doubleClick('left', '01 Folder', '.name .icon')
     assert.equal(await current('left'), path.join(left, '01 Folder'))
+    await click(await point('left', longName))
+    assert.equal(await selectedPath(), path.join(left, '01 Folder', longName))
+    assert.equal(await ev('window.__pressed.isConnected'), true, 'wrapping a path must keep the pointer target alive')
+    assert.equal(await ev(`(() => {
+      const label = document.querySelector('#selection-path')
+      const previous = label.clientHeight
+      label.style.maxWidth = '260px'
+      const wraps = label.clientHeight > previous && label.scrollWidth === label.clientWidth && label.scrollHeight === label.clientHeight
+      label.style.maxWidth = ''
+      return wraps
+    })()`), true, 'the full path wraps inside the bar without clipping')
     await doubleClick('left', '..')
     assert.equal(await current('left'), left)
     pass('double-click opens folders and the parent row, including icon clicks')
@@ -104,7 +173,8 @@ async function testPlatform(platform, target, native = false) {
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 })
     await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 })
     assert.equal((await state('right')).cursor, 'Right-2.txt')
-    pass('switching pane by mouse preserves keyboard focus')
+    assert.equal(await selectedPath(), path.join(right, 'Right-2.txt'))
+    pass('switching pane by mouse preserves keyboard focus and path follows the arrow key')
     const empty = await ev(`(() => {const r=document.querySelector('.pane[data-side="right"] .list').getBoundingClientRect();return {x:r.x+100,y:r.bottom-30}})()`)
     await click(empty)
     assert.equal((await state('right')).cursor, 'Right-2.txt')

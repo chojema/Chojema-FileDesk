@@ -8,9 +8,6 @@
   --accent: #4f5bd5;
   --accent-soft: rgba(79, 91, 213, 0.12);
   --on-accent: #ffffff;
-  --cursor-bg: rgba(79, 91, 213, 0.16);
-  --cursor-line: #4f5bd5;
-  --sel-text: #d1366b;
   --folder: #f0a531;
   --danger: #d64545;
   --shadow: 0 12px 40px rgba(20, 24, 40, 0.18);
@@ -34,9 +31,6 @@
   --accent: #8c96ff;
   --accent-soft: rgba(140, 150, 255, 0.14);
   --on-accent: #12142b;
-  --cursor-bg: rgba(140, 150, 255, 0.2);
-  --cursor-line: #8c96ff;
-  --sel-text: #ff7aa2;
   --folder: #f5b546;
   --danger: #ff6b6b;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -165,7 +159,7 @@ select {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .pane.active {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -377,38 +371,51 @@ select {
   flex: none;
   width: 16px;
   height: 16px;
-  color: var(--text-dim);
+  color: var(--row-text, var(--text-dim));
 }
 .row.dir .icon {
   color: var(--folder);
 }
 .row .meta {
-  color: var(--text-dim);
+  color: var(--row-text, var(--text-dim));
   font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
 .row.hidden-entry {
   opacity: 0.55;
 }
+.row.selected,
+.row.cursor {
+  background: var(--surface-2);
+}
+.row.selected {
+  opacity: 1;
+  --row-text: var(--text);
+}
 .row.selected .name,
 .row.selected .meta {
-  color: var(--sel-text);
   font-weight: 600;
+}
+.pane.active .row.cursor {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.pane.active .row.selected,
+.pane.active:not(.has-selection) .row.cursor {
+  background: var(--accent);
+  color: var(--on-accent);
+  opacity: 1;
+  --row-text: var(--on-accent);
+}
+.pane.active.has-selection .row.selected.cursor {
+  box-shadow: inset 0 0 0 1px var(--on-accent);
 }
 .pane.drop-target .list,
 .row.drop-target {
-  outline: 2px dashed var(--accent);
+  outline: 2px dashed var(--row-text, var(--accent));
   outline-offset: -2px;
   background: var(--accent-soft);
 }
-.row.cursor {
-  background: var(--accent-soft);
-}
-.pane.active .row.cursor {
-  background: var(--cursor-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cursor-line) 45%, transparent);
-}
-.row:hover:not(.cursor) {
+.row:hover:not(.cursor, .selected, .drop-target) {
   background: color-mix(in srgb, var(--surface-2) 60%, transparent);
 }
 
@@ -432,13 +439,32 @@ select {
   white-space: nowrap;
   overflow: hidden;
 }
+.selection-path {
+  flex: none;
+  min-height: 26px;
+  max-height: 30vh;
+  margin: 6px 8px 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--row-radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+}
+.selection-path:empty {
+  visibility: hidden;
+}
 
 /* ---------- function key bar ---------- */
 .fkeys[hidden] {
   display: none;
 }
-#app:has(.fkeys[hidden]) .panes {
-  padding-bottom: 8px;
+#app:has(.fkeys[hidden]) .selection-path {
+  margin-bottom: 8px;
 }
 .fkeys {
   flex: none;

@@ -17,6 +17,7 @@ let operating = false
 let booting = true
 const panes = {} as Record<PaneSide, Pane>
 const lastLocal = { left: '', right: '' }
+const selectionPath = document.querySelector<HTMLElement>('#selection-path')!
 
 const other = (p: Pane): Pane => (p === panes.left ? panes.right : panes.left)
 
@@ -94,7 +95,13 @@ const host: PaneHost = {
     active = p
     panes.left.setActive(p === panes.left)
     panes.right.setActive(p === panes.right)
+    host.onTargetChange(p)
     updateToolbarDirection()
+  },
+  onTargetChange(p) {
+    if (p !== active) return
+    const path = p.singleTargetPath()
+    if (path !== selectionPath.textContent) selectionPath.textContent = path
   },
   isActive: (p) => active === p,
   placeTarget: (pane, place) => placeTarget(place, other(pane).path, places, api.platform === 'win32'),

@@ -21,6 +21,7 @@ interface Row {
 
 export interface PaneHost {
   activate(pane: Pane): void
+  onTargetChange(pane: Pane): void
   isActive(pane: Pane): boolean
   /** Whether an entry passes the current hidden-item filters. */
   isVisible(entry: FileEntry): boolean
@@ -154,7 +155,7 @@ export class Pane {
     this.fwdBtn.addEventListener('click', () => this.goForward())
     upBtn.addEventListener('click', () => this.goParent())
     root.addEventListener('mousedown', () => this.host.activate(this))
-    this.listEl.addEventListener('scroll', () => this.renderRows())
+    this.listEl.addEventListener('scroll', () => this.renderRows(true))
     this.listEl.addEventListener('focus', () => this.host.activate(this))
     this.listEl.addEventListener('mousedown', (e) => this.onMouseDown(e))
     this.listEl.addEventListener('click', (e) => {
@@ -204,6 +205,7 @@ export class Pane {
       if (this.selected.size && !this.selected.has(entry.path)) {
         this.selected.clear()
         this.updateRowStates()
+        this.updateSelectionStatus()
       }
       this.host.startDrag(this, this.targets(), e)
     })
@@ -212,7 +214,7 @@ export class Pane {
       const idx = this.rowIndexAt(e)
       if (idx >= 0) this.openAt(idx)
     })
-    new ResizeObserver(() => this.renderRows()).observe(this.listEl)
+    new ResizeObserver(() => this.renderRows(true)).observe(this.listEl)
 
     this.pathInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -418,6 +420,10 @@ export class Pane {
     return cur ? [cur] : []
   }
 
+  singleTargetPath(): string {
+    return this.selected.size > 1 ? '' : this.targets()[0]?.path ?? ''
+  }
+
   /** Entries currently listed (after hidden filters), in display order, without "..". */
   visibleEntries(): FileEntry[] {
     const out: FileEntry[] = []
@@ -585,6 +591,7 @@ export class Pane {
     this.ensureVisible()
     this.renderRows()
     if (extend) void this.updateStatus()
+    else if (!this.selected.size) this.host.onTargetChange(this)
   }
 
   private toggleAt(idx: number, advance: boolean): void {
@@ -625,6 +632,7 @@ export class Pane {
       this.cursor = idx
       this.ensureVisible()
       this.renderRows()
+      if (!this.selected.size) this.host.onTargetChange(this)
     }
   }
 
@@ -846,10 +854,18 @@ export class Pane {
     else if (top + ROW_H > this.listEl.scrollTop + view) this.listEl.scrollTop = top + ROW_H - view
   }
 
-  private renderRows(): void {
+  private renderRows(keepVisibleRows = false): void {
     this.innerEl.style.height = `${this.rows.length * ROW_H}px`
-    const start = Math.max(0, Math.floor(this.listEl.scrollTop / ROW_H) - BUFFER)
-    const end = Math.min(this.rows.length, Math.ceil((this.listEl.scrollTop + this.listEl.clientHeight) / ROW_H) + BUFFER)
+    const visibleStart = Math.floor(this.listEl.scrollTop / ROW_H)
+    const visibleEnd = Math.min(this.rows.length, Math.ceil((this.listEl.scrollTop + this.listEl.clientHeight) / ROW_H))
+    if (keepVisibleRows) {
+      // A wrapping status path can resize the list mid-click, so keep rows already covering the viewport.
+      const first = this.innerEl.firstElementChild as HTMLElement | null
+      const last = this.innerEl.lastElementChild as HTMLElement | null
+      if (first && last && Number(first.dataset.rowIndex) <= visibleStart && Number(last.dataset.rowIndex) >= visibleEnd - 1) return
+    }
+    const start = Math.max(0, visibleStart - BUFFER)
+    const end = Math.min(this.rows.length, visibleEnd + BUFFER)
     const frag = document.createDocumentFragment()
     for (let i = start; i < end; i++) frag.append(this.renderRow(i))
     const ed = this.editing
@@ -913,17 +929,24 @@ export class Pane {
     return img
   }
 
-  private async updateStatus(): Promise<void> {
+  private updateSelectionStatus(): void {
+    const count = this.selected.size
+    this.root.classList.toggle('has-selection', count > 0)
+    this.host.onTargetChange(this)
     const visible = this.rows.filter((r) => r.entry).length
     const hiddenCount = this.entries.length - visible
-    if (this.selected.size) {
+    if (count) {
       let bytes = 0
       for (const e of this.entries) if (this.selected.has(e.path)) bytes += e.isDir || e.pkg ? (this.dirSizes.get(e.path) ?? 0) : e.size
-      this.statusLeft.textContent = t('status.selected', { n: this.selected.size, size: formatSize(bytes) })
+      this.statusLeft.textContent = t('status.selected', { n: count, size: formatSize(bytes) })
     } else {
       this.statusLeft.textContent =
         t('status.items', { n: visible }) + (hiddenCount > 0 ? ` · ${t('status.hiddenCount', { n: hiddenCount })}` : '')
     }
+  }
+
+  private async updateStatus(): Promise<void> {
+    this.updateSelectionStatus()
     const path = this.path
     const space = await api.diskSpace(path)
     if (path !== this.path) return

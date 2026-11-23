@@ -4,6 +4,10 @@
 
 [English](CHANGELOG.en.md)
 
+## [0.4.19] - 2026-11-23
+
+- 자세한 내용: [release-notes/v0.4.19.md](release-notes/v0.4.19.md)
+
 ## [0.4.18] - 2026-11-16
 
 - 자세한 내용: [release-notes/v0.4.18.md](release-notes/v0.4.18.md)
