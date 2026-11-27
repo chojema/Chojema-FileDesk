@@ -3,17 +3,31 @@ import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const nativeWindows = process.platform === 'win32'
+const refs = ['System.Windows.Forms.dll', 'System.Web.Extensions.dll']
 
+/** Starts the compiled production helper, or `script` hosting FdHelper.Run in PowerShell. */
 async function startHelper(script?: string) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'filedesk-win-helper-'))
-  await fs.copyFile(new URL('../src/main/win-helper.cs', import.meta.url), path.join(dir, 'helper.cs'))
-  const runner = script ?? await fs.readFile(new URL('../src/main/win-helper.ps1', import.meta.url), 'utf8')
-  await fs.writeFile(path.join(dir, 'helper.ps1'), '\uFEFF' + runner)
-  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Sta', '-File', path.join(dir, 'helper.ps1')], { windowsHide: true })
+  const cs = path.join(dir, 'helper.cs')
+  await fs.copyFile(new URL('../src/main/win-helper.cs', import.meta.url), cs)
+  let child
+  if (script) {
+    await fs.writeFile(path.join(dir, 'helper.ps1'), '\uFEFF' + script)
+    child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Sta', '-File', path.join(dir, 'helper.ps1')], { windowsHide: true })
+  } else {
+    // Same compiler and options as src/main/win-helper.ts.
+    const framework = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET')
+    const csc = ['Framework64', 'Framework'].map(d => path.join(framework, d, 'v4.0.30319', 'csc.exe')).find(p => existsSync(p))
+    assert.ok(csc, 'csc.exe not found')
+    const exe = path.join(dir, 'FileDeskHelper.exe')
+    execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+', `/out:${exe}`, ...refs.map(r => `/r:${r}`), cs], { windowsHide: true })
+    child = spawn(exe, [], { windowsHide: true })
+  }
   const lines = createInterface({ input: child.stdout })
   const messages: Record<string, unknown>[] = []
   const waiters: { match: (m: Record<string, unknown>) => boolean; resolve: (m: Record<string, unknown>) => void; reject: (e: Error) => void }[] = []
@@ -57,7 +71,7 @@ async function startHelper(script?: string) {
 
 test('Windows helper pumps idle UI callbacks and queues requests across nested message loops', { skip: !nativeWindows, timeout: 20000 }, async () => {
   const helper = await startHelper(`$ErrorActionPreference = 'Stop'
-Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'helper.cs')))
+Add-Type -ReferencedAssemblies System.Windows.Forms, System.Web.Extensions -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'helper.cs')))
 $script:uiThread = [Threading.Thread]::CurrentThread.ManagedThreadId
 [FdHelper]::Run([Action[string]] {
   param([string]$line)
@@ -90,7 +104,7 @@ $script:uiThread = [Threading.Thread]::CurrentThread.ManagedThreadId
   } finally { await helper.stop() }
 })
 
-test('Windows production runner preserves request IDs, survives bad JSON and ignores a closed owner', { skip: !nativeWindows, timeout: 20000 }, async () => {
+test('Windows production helper preserves request IDs, survives bad JSON and ignores a closed owner during warm-up', { skip: !nativeWindows, timeout: 20000 }, async () => {
   const helper = await startHelper()
   try {
     await helper.next(m => m.ready === true)

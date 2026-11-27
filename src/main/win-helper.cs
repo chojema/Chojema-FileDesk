@@ -1,10 +1,16 @@
-// Windows helper run by PowerShell (Add-Type). Shows the real Explorer context menu.
-// Kept in a .cs file so it can be compile-checked; src/main/win-helper.ts embeds it at build time.
+// Windows helper compiled with the .NET Framework csc.exe at first run. Shows the real Explorer context menu
+// and handles the Explorer file clipboard. src/main/win-helper.ts embeds this file at build time.
+// A compiled host keeps the user's UI language; powershell.exe forces en-US shell menus on Korean Windows.
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 public static class FdHelper
@@ -122,9 +128,30 @@ public static class FdHelper
     }
 
     static MenuHost host;
+    static Control ui;
+    static bool busy;
+    static TextReader input;
+    static TextWriter output;
+    static readonly JavaScriptSerializer json = new JavaScriptSerializer();
 
-    /// Keeps shell/clipboard callbacks on the PowerShell STA, pumping messages even while
-    /// stdin is idle. Only the background reader blocks; it never invokes PowerShell or COM.
+    /// Runs on the UI thread once the helper reports ready.
+    public static Action Started;
+
+    [STAThread]
+    public static void Main()
+    {
+        Started = delegate
+        {
+            // A plain document warms the shared handlers; the helper .exe itself stays slow (~0.5 s) and slows later menus.
+            string sample = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "warmup.txt");
+            try { if (!File.Exists(sample)) File.WriteAllText(sample, ""); WarmUp(sample, 4); }
+            catch (Exception e) { Console.Error.WriteLine(e); }
+        };
+        Run(Dispatch);
+    }
+
+    /// Keeps shell/clipboard callbacks on the STA, pumping messages even while
+    /// stdin is idle. Only the background reader blocks; it never invokes COM.
     public static void Run(Action<string> dispatch)
     {
         var lines = new Queue<string>();
@@ -133,13 +160,13 @@ public static class FdHelper
         {
             // BeginInvoke requires a handle created on the UI/STA thread.
             IntPtr handle = dispatcher.Handle;
-            bool dispatching = false;
+            ui = dispatcher;
             Action drain = delegate
             {
                 // Shell verbs may run nested message loops (e.g. a modal property sheet).
                 // A queued request must not reenter Show and overwrite its active menu.
-                if (dispatching) return;
-                dispatching = true;
+                if (busy) return;
+                busy = true;
                 try
                 {
                     while (true)
@@ -159,7 +186,7 @@ public static class FdHelper
                     Console.Error.WriteLine(e);
                     context.ExitThread();
                 }
-                finally { dispatching = false; }
+                finally { busy = false; }
             };
             Action<string> enqueue = delegate(string line)
             {
@@ -172,7 +199,7 @@ public static class FdHelper
                 try
                 {
                     string line;
-                    while ((line = Console.In.ReadLine()) != null) enqueue(line);
+                    while ((line = In.ReadLine()) != null) enqueue(line);
                 }
                 catch (Exception e) { Console.Error.WriteLine(e); }
                 finally { enqueue(null); }
@@ -180,8 +207,103 @@ public static class FdHelper
             reader.IsBackground = true;
             reader.Start();
             Write("{\"ready\":true}");
+            if (Started != null) dispatcher.BeginInvoke(Started);
             Application.Run(context);
         }
+    }
+
+    /// Handles one JSON request line: {id, op: "clipGet"|"clipSet"|(menu), ...}.
+    static void Dispatch(string line)
+    {
+        int id = 0;
+        string result;
+        try
+        {
+            var r = json.Deserialize<Dictionary<string, object>>(line);
+            id = (int)Number(Get(r, "id"));
+            string op = Get(r, "op") as string;
+            if (op == "clipSet") result = ClipSet(Strings(Get(r, "paths")), true.Equals(Get(r, "cut")));
+            else if (op == "clipGet") result = ClipGet();
+            else result = Show(Strings(Get(r, "paths")), Convert.ToString(Get(r, "folder"), CultureInfo.InvariantCulture),
+                Strings(Get(r, "ids")), Strings(Get(r, "labels")), true.Equals(Get(r, "extended")), Number(Get(r, "owner")));
+        }
+        catch (Exception e)
+        {
+            Write(json.Serialize(new Dictionary<string, object> { { "id", id }, { "error", e.Message } }));
+            return;
+        }
+        Write(json.Serialize(new Dictionary<string, object> { { "id", id }, { "result", result } }));
+    }
+
+    static object Get(Dictionary<string, object> r, string key)
+    {
+        object v;
+        return r != null && r.TryGetValue(key, out v) ? v : null;
+    }
+
+    static long Number(object o)
+    {
+        long n;
+        return long.TryParse(Convert.ToString(o, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? n : 0;
+    }
+
+    static string[] Strings(object o)
+    {
+        if (o == null) return new string[0];
+        var s = o as string;
+        if (s != null) return new[] { s };
+        var list = new List<string>();
+        foreach (object x in (IEnumerable)o) list.Add(Convert.ToString(x, CultureInfo.InvariantCulture));
+        return list.ToArray();
+    }
+
+    /// Puts files on the clipboard the way Explorer does; an empty list clears it.
+    static string ClipSet(string[] paths, bool cut)
+    {
+        if (paths.Length == 0) { Clipboard.Clear(); return "ok"; }
+        var files = new StringCollection();
+        files.AddRange(paths);
+        var data = new DataObject();
+        data.SetFileDropList(files);
+        data.SetData("Preferred DropEffect", new MemoryStream(new byte[] { (byte)(cut ? 2 : 5), 0, 0, 0 }));
+        Clipboard.SetDataObject(data, true);
+        return "ok";
+    }
+
+    /// Files on the clipboard (CF_HDROP) and whether Explorer marked them as cut, as JSON.
+    static string ClipGet()
+    {
+        var list = Clipboard.ContainsFileDropList() ? Clipboard.GetFileDropList() : new StringCollection();
+        var paths = new string[list.Count];
+        list.CopyTo(paths, 0);
+        bool cut = false;
+        var effect = Clipboard.GetData("Preferred DropEffect") as MemoryStream;
+        if (effect != null) { byte[] b = effect.ToArray(); cut = b.Length > 0 && (b[0] & 2) != 0; }
+        return json.Serialize(new Dictionary<string, object> { { "paths", paths }, { "cut", cut } });
+    }
+
+    /// Builds and discards the shell menu so the first right-clicks skip the cold shell-extension load
+    /// (measured: the first few builds take 0.5-1.4 s, later ones about 0.2 s).
+    static void WarmUp(string path, int times)
+    {
+        if (busy || times <= 0) return;
+        var pidls = new List<IntPtr>();
+        object menuObject = null;
+        IntPtr hmenu = CreatePopupMenu();
+        try
+        {
+            IContextMenu menu = GetMenu(new[] { path }, Path.GetDirectoryName(path), IntPtr.Zero, pidls, out menuObject);
+            if (menu != null) menu.QueryContextMenu(hmenu, 0, SHELL_FIRST, SHELL_LAST, CMF_NORMAL | CMF_EXPLORE);
+        }
+        catch (Exception e) { Console.Error.WriteLine(e); return; }
+        finally
+        {
+            DestroyMenu(hmenu);
+            if (menuObject != null) Marshal.ReleaseComObject(menuObject);
+            foreach (IntPtr p in pidls) CoTaskMemFree(p);
+        }
+        // One pass per message, so a real request waits for at most one pass.
+        ui.BeginInvoke((Action)delegate { WarmUp(path, times - 1); });
     }
 
     /// Shows app items followed by the Explorer menu for paths (or for folder's background when paths is empty).
@@ -300,8 +422,19 @@ public static class FdHelper
 
     static readonly object outLock = new object();
 
+    // Raw UTF-8 pipes: a GUI-subsystem exe has no console whose code page could be set.
+    static TextReader In
+    {
+        get { return input ?? (input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false))); }
+    }
+
     public static void Write(string line)
     {
-        lock (outLock) { Console.Out.WriteLine(line); Console.Out.Flush(); }
+        lock (outLock)
+        {
+            if (output == null) output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+            output.WriteLine(line);
+            output.Flush();
+        }
     }
 }
