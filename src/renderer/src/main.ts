@@ -917,15 +917,15 @@ function renderToolbar(): void {
     ['tbParent', 'tb.parent', 'parent', parentKey],
     ['tbTop', 'tb.top', 'top', 'Home'],
     null,
-    ['tbMkdir', 'menu.newFolder', 'mkdir', 'F7'],
-    ['tbCopy', 'menu.copy', 'copy', 'F5', 'accent dir'],
-    ['tbMove', 'menu.move', 'move', 'F6', 'accent dir'],
+    ['tbMkdir', 'menu.newFolder', 'mkdir', 'F7', 'mkdir'],
+    ['tbCopy', 'menu.copy', 'copy', 'F5', 'copy dir'],
+    ['tbMove', 'menu.move', 'move', 'F6', 'move dir'],
     ['tbTrash', 'menu.trash', 'trash', 'F8', 'danger'],
     null,
     ['tbBottom', 'tb.bottom', 'bottom', 'End']
   ]
   // Pinned to the bottom edge of the toolbar.
-  const terminal: [IconName, MsgKey, string] = ['tbTerminal', 'tb.terminal', 'terminal']
+  const terminal: [IconName, MsgKey, string, undefined, string] = ['tbTerminal', 'tb.terminal', 'terminal', undefined, 'terminal']
   const copyPath: [IconName, MsgKey, string, string] = ['tbCopyPath', 'tb.copyPath', 'copyPath', isMac ? '⌘⇧C' : 'Ctrl+Shift+C']
   const copyName: [IconName, MsgKey, string] = ['tbCopyName', 'tb.copyName', 'copyName']
   const copyList: [IconName, MsgKey, string] = ['tbCopyList', 'tb.copyList', 'copyList']

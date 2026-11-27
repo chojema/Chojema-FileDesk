@@ -10,6 +10,7 @@
   --on-accent: #ffffff;
   --folder: #f0a531;
   --danger: #d64545;
+  --move: #e0662a; /* red-orange: apart from --folder amber and --danger red */
   --shadow: 0 12px 40px rgba(20, 24, 40, 0.18);
   --row-h: 24px; /* keep in sync with ROW_H in pane.ts */
   --row-inset: 6px;
@@ -33,6 +34,7 @@
   --on-accent: #12142b;
   --folder: #f5b546;
   --danger: #ff6b6b;
+  --move: #ff8a4c;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
@@ -129,9 +131,26 @@ select {
 .tb-btn:active {
   transform: translateY(1px);
 }
-.tb-btn.accent:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+/* These toolbar buttons stay colored so they read apart at a glance. */
+.tb-btn.copy { --tb-color: var(--accent); }
+.tb-btn.move { --tb-color: var(--move); }
+.tb-btn.mkdir { --tb-color: var(--folder); }
+.tb-btn.terminal { --tb-color: var(--text); }
+.tb-btn.copy,
+.tb-btn.move,
+.tb-btn.mkdir,
+.tb-btn.terminal,
+.tb-btn.copy:hover,
+.tb-btn.move:hover,
+.tb-btn.mkdir:hover,
+.tb-btn.terminal:hover {
+  color: var(--tb-color);
+}
+.tb-btn.copy:hover,
+.tb-btn.move:hover,
+.tb-btn.mkdir:hover,
+.tb-btn.terminal:hover {
+  border-color: color-mix(in srgb, var(--tb-color) 45%, var(--border));
 }
 .tb-btn.danger:hover {
   color: var(--danger);
